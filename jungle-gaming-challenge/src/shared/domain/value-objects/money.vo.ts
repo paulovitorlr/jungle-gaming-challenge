@@ -69,6 +69,10 @@ export class Money {
     return this.amount.isNegative();
   }
 
+  isPositive(): boolean {
+  return this.amount.greaterThan(0);
+  }
+
   isZero(): boolean {
     return this.amount.isZero();
   }

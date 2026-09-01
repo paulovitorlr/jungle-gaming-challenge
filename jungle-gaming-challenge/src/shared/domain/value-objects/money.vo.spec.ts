@@ -87,4 +87,28 @@ describe('Money', () => {
 
     expect(() => brl.add(usd)).toThrow('Currency mismatch');
   });
+
+  it('should identify a positive amount', () => {
+  const money = Money.from({
+    amount: '10.00',
+    currency: 'BRL',
+  });
+
+  expect(money.isPositive()).toBe(true);
+});
+
+it('should not identify zero as positive', () => {
+  const money = Money.zero('BRL');
+
+  expect(money.isPositive()).toBe(false);
+});
+
+it('should not identify a negative amount as positive', () => {
+  const money = Money.from({
+    amount: '-10.00',
+    currency: 'BRL',
+  });
+
+  expect(money.isPositive()).toBe(false);
+});
 });
