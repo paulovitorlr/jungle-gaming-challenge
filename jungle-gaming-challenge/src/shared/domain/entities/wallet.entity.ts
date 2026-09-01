@@ -1,6 +1,7 @@
 import { Money } from '../../../shared/domain/value-objects/money.vo.js';
 import { WalletId } from '../../../shared/domain/value-objects/wallet-id.vo.js';
-import { WalletLedgerEntry } from './wallet-ledger-entry.entity.js';
+import { LedgerDirection } from '../../../modules/wallet/domain/enums/ledger-direction.enum.js';
+import { WalletLedgerEntry } from '../../../modules/wallet/domain/entities/wallet-ledger-entry.js';
 
 type WalletProps = {
   id: WalletId;
@@ -57,38 +58,50 @@ export class Wallet {
     );
   }
 
-  credit(amount: Money): WalletLedgerEntry {
+  credit(transactionId: string, amount: Money): WalletLedgerEntry {
     this.ensureSameCurrency(amount);
     this.ensurePositiveAmount(amount);
 
-    this._balance = this._balance.add(amount);
+    const balanceBefore = this._balance;
+    const balanceAfter = balanceBefore.add(amount);
+
+    this._balance = balanceAfter;
     this.touch();
 
-    return WalletLedgerEntry.create(
-      this.id,
-      'credit',
-      amount,
-    );
+    return WalletLedgerEntry.create({
+      id: crypto.randomUUID(),
+      walletId: this.id,
+      transactionId,
+      direction: LedgerDirection.Credit,
+      money: amount,
+      balanceBefore,
+      balanceAfter,
+    });
   }
 
-  debit(amount: Money): WalletLedgerEntry {
+  debit(transactionId: string, amount: Money): WalletLedgerEntry {
     this.ensureSameCurrency(amount);
     this.ensurePositiveAmount(amount);
 
-    const newBalance = this._balance.subtract(amount);
+    const balanceBefore = this._balance;
+    const balanceAfter = balanceBefore.subtract(amount);
 
-    if (newBalance.isNegative()) {
+    if (balanceAfter.isNegative()) {
       throw new Error('Insufficient balance');
     }
 
-    this._balance = newBalance;
+    this._balance = balanceAfter;
     this.touch();
 
-    return WalletLedgerEntry.create(
-      this.id,
-      'debit',
-      amount,
-    );
+    return WalletLedgerEntry.create({
+      id: crypto.randomUUID(),
+      walletId: this.id,
+      transactionId,
+      direction: LedgerDirection.Debit,
+      money: amount,
+      balanceBefore,
+      balanceAfter,
+    });
   }
 
   get balance(): Money {
