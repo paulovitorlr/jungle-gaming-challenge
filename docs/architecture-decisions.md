@@ -70,11 +70,9 @@ O comportamento orientado a eventos será introduzido somente após o fluxo fina
 
 ### Consequências
 
-Consumidores devem ser idempotentes.
-
-A entrega de mensagens não será tratada como exatamente uma vez.
-
-Retry e tratamento de falhas precisarão ser projetados explicitamente.
+- consumidores devem ser idempotentes;
+- a entrega de mensagens não será tratada como exatamente uma vez;
+- retry e tratamento de falhas precisarão ser projetados explicitamente.
 
 ---
 
@@ -94,9 +92,8 @@ PostgreSQL será a fonte durável principal de verdade para o estado financeiro.
 
 ### Consequências
 
-Garantias importantes devem ser reforçadas tanto pela aplicação quanto pelo banco quando apropriado.
-
-Transações de banco definirão fronteiras atômicas para alterações financeiras relacionadas.
+- garantias importantes devem ser reforçadas tanto pela aplicação quanto pelo banco quando apropriado;
+- transações de banco definirão fronteiras atômicas para alterações financeiras relacionadas.
 
 ---
 
@@ -118,9 +115,9 @@ Sua configuração será introduzida quando existir a primeira entidade persiste
 
 ### Consequências
 
-Mapeamentos de persistência não devem redefinir regras de domínio.
-
-Migrations deverão permanecer explícitas, versionadas e reversíveis.
+- mapeamentos de persistência não devem redefinir regras de domínio;
+- migrations deverão permanecer explícitas, versionadas e reversíveis;
+- entidades de domínio não devem depender do MikroORM para expressar suas invariantes.
 
 ---
 
@@ -128,22 +125,52 @@ Migrations deverão permanecer explícitas, versionadas e reversíveis.
 
 ### Status
 
-Pendente da implementação final do domínio.
+Aceita e implementada no domínio.
 
 ### Contexto
 
 Números de ponto flutuante nativos do JavaScript não são adequados para operações financeiras em que determinismo e precisão são necessários.
 
-### Direção Pretendida
+O desafio também estabelece que valores monetários não devem ser representados com `number`, `float` ou `double`.
 
-Valores financeiros não utilizarão aritmética binária de ponto flutuante sem controle.
+### Decisão
 
-As alternativas principais são:
+Valores monetários serão representados pelo Value Object `Money`.
 
-- unidades monetárias inteiras na menor unidade;
-- numeric/decimal no PostgreSQL combinado com uma representação explícita na aplicação.
+A API de criação recebe o valor como `string` decimal, e a aritmética interna utiliza `decimal.js`.
 
-A escolha final priorizará aritmética determinística e semântica clara de domínio.
+Exemplo:
+
+```ts
+Money.from({
+  amount: '25.00',
+  currency: 'BRL',
+});
+```
+
+O `Money` é responsável por:
+
+- validar o formato decimal recebido;
+- rejeitar notação científica;
+- rejeitar valores com mais de duas casas decimais;
+- manter a moeda associada ao valor;
+- impedir operações entre moedas diferentes;
+- realizar soma, subtração e negação sem aritmética binária de ponto flutuante;
+- permanecer imutável durante as operações.
+
+### Consequências
+
+Benefícios:
+
+- precisão decimal explícita;
+- regras monetárias centralizadas;
+- redução do risco de erros decorrentes de ponto flutuante;
+- operações financeiras mais fáceis de testar e revisar.
+
+Trade-offs:
+
+- conversões entre banco, domínio e contratos HTTP precisam ser explícitas;
+- valores monetários não devem escapar do domínio como `number`.
 
 ---
 
@@ -169,7 +196,7 @@ Processar a mesma operação lógica múltiplas vezes deve resultar em apenas um
 
 ### Consequências
 
-Idempotência passa a fazer parte do modelo de persistência e da estratégia transacional, não apenas de middleware.
+A idempotência passa a fazer parte do modelo de persistência e da estratégia transacional, não apenas de middleware.
 
 ---
 
@@ -177,23 +204,44 @@ Idempotência passa a fazer parte do modelo de persistência e da estratégia tr
 
 ### Status
 
-Aceita em princípio.
+Aceita e parcialmente implementada no domínio.
 
 ### Contexto
 
 Um saldo mutável isolado não explica como o estado financeiro atual foi alcançado.
 
+Além disso, alterar o saldo sem produzir um registro correspondente permitiria divergência entre o estado atual da carteira e seu histórico financeiro.
+
 ### Decisão
 
 Toda alteração relevante de saldo deverá produzir um lançamento imutável correspondente no ledger.
 
-Alteração de saldo e persistência do lançamento correspondente deverão compartilhar a mesma fronteira transacional.
+No domínio, créditos e débitos da `Wallet` produzem um `WalletLedgerEntry`.
+
+Exemplo conceitual:
+
+```text
+Wallet.credit(100.00)
+        |
+        |-- balance: 0.00 -> 100.00
+        |
+        `-- WalletLedgerEntry
+                type: credit
+                amount: 100.00
+```
+
+A invariante adotada é:
+
+> Toda alteração de saldo deve possuir um lançamento correspondente no ledger.
+
+A alteração da `Wallet` e a persistência do `WalletLedgerEntry` deverão compartilhar a mesma fronteira transacional no PostgreSQL.
 
 ### Consequências
 
-O ledger passa a ser um mecanismo central de auditabilidade e verificação de consistência.
-
-Histórico financeiro concluído não deve ser apagado ou silenciosamente reescrito.
+- o ledger passa a ser um mecanismo central de auditabilidade;
+- histórico financeiro concluído não deve ser apagado ou silenciosamente reescrito;
+- a camada de aplicação deverá persistir carteira e lançamento de forma atômica;
+- a infraestrutura não poderá tratar atualização de saldo e criação do ledger como duas operações independentes.
 
 ---
 
@@ -201,33 +249,62 @@ Histórico financeiro concluído não deve ser apagado ou silenciosamente reescr
 
 ### Status
 
-Pendente de testes de implementação.
+Aceita em princípio; persistência e testes de integração ainda pendentes.
 
 ### Contexto
 
 Duas ou mais requisições podem tentar alterar o mesmo saldo simultaneamente.
 
-Uma abordagem simples de leitura, modificação e escrita sem coordenação com o banco pode gerar lost updates ou estados inválidos.
+Uma abordagem simples de leitura, modificação e escrita sem coordenação com o banco pode gerar `lost update` ou estados inválidos.
 
 ### Decisão
 
-O mecanismo final de concorrência será escolhido após a implementação do fluxo de persistência e validado por testes de integração determinísticos.
+A estratégia principal será optimistic concurrency baseada em versionamento da `Wallet`.
 
-Estratégias candidatas:
+Cada carteira possui um campo `version`:
 
-- pessimistic locking;
-- optimistic concurrency com versionamento;
-- updates condicionais e atômicos no banco.
+- inicia em `1`;
+- é incrementado somente quando o saldo é alterado com sucesso;
+- não é incrementado quando uma operação é rejeitada.
 
-### Critérios de Escolha
+Fluxo esperado:
 
-A estratégia escolhida deve:
+```text
+Processo A lê Wallet version 5
+Processo B lê Wallet version 5
+
+Processo A persiste a alteração -> version 6
+Processo B tenta persistir esperando version 5 -> conflito
+```
+
+A camada de persistência deverá realizar atualização condicionada à versão esperada.
+
+A implementação final será validada com testes de integração determinísticos envolvendo concorrência real contra PostgreSQL.
+
+### Critérios de Validação
+
+A estratégia deve:
 
 - proteger invariantes financeiras;
+- impedir `lost update`;
 - se comportar de forma previsível sob contenção;
 - permanecer compreensível;
 - ser testável;
 - evitar distributed locking desnecessário.
+
+### Consequências
+
+Benefícios:
+
+- ausência de lock distribuído no domínio;
+- conflitos concorrentes tornam-se explícitos;
+- a estratégia combina bem com o modelo de versão já existente na `Wallet`.
+
+Trade-offs:
+
+- conflitos precisarão ser tratados pela camada de aplicação;
+- sob alta contenção, algumas operações poderão precisar ser repetidas;
+- a garantia depende de atualização condicional correta no banco.
 
 ---
 
@@ -254,3 +331,87 @@ O estado de negócio e o registro da outbox seriam persistidos na mesma transaç
 A estratégia adiciona complexidade de persistência e processamento em background, mas elimina uma falha crítica de dual write.
 
 A decisão final será registrada após a implementação do fluxo transacional principal.
+
+---
+
+## ADR-010 — Wallet como Aggregate Root
+
+### Status
+
+Aceita e implementada no domínio.
+
+### Contexto
+
+As principais invariantes financeiras estão relacionadas ao estado da carteira.
+
+Permitir que saldo, moeda, versionamento e criação de lançamentos fossem alterados diretamente por services, controllers ou repositórios espalharia regras críticas pelo sistema e facilitaria a criação de estados inválidos.
+
+### Decisão
+
+A `Wallet` será o Aggregate Root do contexto financeiro da carteira.
+
+Ela é responsável por manter:
+
+- `WalletId`;
+- `playerId`;
+- `currency`;
+- `balance`;
+- `version`;
+- `createdAt`;
+- `updatedAt`.
+
+A `Wallet` protege as seguintes invariantes:
+
+- a moeda da operação deve ser a mesma moeda da carteira;
+- créditos e débitos devem possuir valor maior que zero;
+- o saldo não pode ficar negativo;
+- alterações de saldo incrementam a versão;
+- operações rejeitadas não alteram a versão;
+- alterações de saldo produzem um `WalletLedgerEntry`.
+
+Novas carteiras são criadas por:
+
+```ts
+Wallet.open(playerId, currency);
+```
+
+Entidades previamente persistidas são reconstruídas por:
+
+```ts
+Wallet.rehydrate(props);
+```
+
+`open()` representa uma transição real de domínio e aplica regras de criação.
+
+`rehydrate()` apenas recompõe um estado previamente persistido e evita tratar leitura do banco como uma nova operação de negócio.
+
+### Consequências
+
+Benefícios:
+
+- invariantes financeiras ficam concentradas em um único ponto;
+- controllers e use cases não precisam conhecer detalhes internos do saldo;
+- o domínio continua independente de NestJS, PostgreSQL e MikroORM;
+- testes unitários conseguem validar as regras sem infraestrutura.
+
+Trade-offs:
+
+- alterações financeiras legítimas precisam passar pela `Wallet`;
+- a camada de persistência deverá respeitar o estado e o versionamento definidos pelo Aggregate Root;
+- atomicidade entre `Wallet` e ledger ainda depende da fronteira transacional que será implementada na infraestrutura.
+
+---
+
+## Estado atual das decisões
+
+As decisões deste documento possuem níveis diferentes de maturidade.
+
+Atualmente:
+
+- `Money`, `WalletId`, `WalletLedgerEntry` e `Wallet` já existem no domínio e possuem testes unitários;
+- representação monetária com `decimal.js` já está definida;
+- `Wallet` já utiliza versionamento de domínio;
+- saldo e ledger já são relacionados pelas operações de crédito e débito;
+- persistência transacional, optimistic locking no PostgreSQL, idempotência persistente, mensageria e outbox ainda serão validados durante as próximas etapas.
+
+O documento deverá ser atualizado sempre que uma decisão inicialmente marcada como candidata ou aceita em princípio for confirmada, alterada ou descartada pela implementação.
