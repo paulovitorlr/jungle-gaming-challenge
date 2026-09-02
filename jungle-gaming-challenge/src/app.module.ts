@@ -21,7 +21,7 @@ import {
   DatabaseTransactionModule,
 } from './shared/infrastructure/database/database-transaction.module.js';
 
-import { MessagingPersistenceModule } from './modules/messaging/infrastructure/persistence/messaging-persistence.module.js';
+import { MessagingModule } from './modules/messaging/messaging.module.js';
 
 @Module({
   imports: [
@@ -64,7 +64,7 @@ import { MessagingPersistenceModule } from './modules/messaging/infrastructure/p
 
     WageringPersistenceModule,
 
-    MessagingPersistenceModule,
+    MessagingModule,
   ],
 
   controllers: [

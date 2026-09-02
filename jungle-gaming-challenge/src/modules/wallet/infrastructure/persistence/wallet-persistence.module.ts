@@ -34,6 +34,7 @@ import {
     },
   ],
   exports: [
+    WALLET_REPOSITORY,
     WALLET_LEDGER_REPOSITORY,
   ],
 })
