@@ -43,6 +43,7 @@ export type WagerTransactionState = {
   referenceTransactionId?: string;
   failureCode?: WagerFailureCode;
   processedAt?: Date;
+  resultingBalance?: Money;
 };
 
 export class WagerTransaction {
@@ -64,6 +65,7 @@ export class WagerTransaction {
     private _referenceTransactionId?: string,
     private _failureCode?: WagerFailureCode,
     private _processedAt?: Date,
+    private _resultingBalance?: Money,
   ) {}
 
   static create(props: CreateWagerTransactionProps): WagerTransaction {
@@ -144,6 +146,7 @@ export class WagerTransaction {
       state.referenceTransactionId,
       state.failureCode,
       state.processedAt,
+      state.resultingBalance,
     );
   }
 
@@ -231,6 +234,10 @@ private allowedReferenceKinds(): WagerTransactionKind[] {
     return this._processedAt;
   }
 
+  get resultingBalance(): Money | undefined {
+    return this._resultingBalance;
+  }
+
   isTerminal(): boolean {
     return (
       this._status === WagerTransactionStatus.Processed ||
@@ -306,6 +313,7 @@ private allowedReferenceKinds(): WagerTransactionKind[] {
 
   markProcessed(
   referenceTransactionId: string | undefined,
+  resultingBalance: Money,
   at: Date,
 ): void {
   this.ensureNotTerminal();
@@ -321,6 +329,7 @@ private allowedReferenceKinds(): WagerTransactionKind[] {
   }
 
   this._referenceTransactionId = referenceTransactionId;
+  this._resultingBalance = resultingBalance;
   this._processedAt = at;
   this._status = WagerTransactionStatus.Processed;
 }
@@ -337,10 +346,14 @@ markPendingReference(): void {
   this._status = WagerTransactionStatus.PendingReference;
 }
 
-reject(code: WagerFailureCode): void {
+reject(
+  code: WagerFailureCode,
+  resultingBalance: Money,
+): void {
   this.ensureNotTerminal();
 
   this._failureCode = code;
+  this._resultingBalance = resultingBalance;
   this._status = WagerTransactionStatus.Rejected;
 }
 

@@ -189,7 +189,7 @@ Trade-offs:
 
 ### Status
 
-Aceita em princípio.
+Aceita.
 
 ### Contexto
 
@@ -203,17 +203,23 @@ A idempotência será persistente.
 
 O endpoint de transações exigirá o header `Idempotency-Key`. A requisição será normalizada para JSON canônico e terá um `payloadHash` persistido.
 
-Um identificador de negócio ou chave de idempotência será armazenado e protegido por constraints de unicidade no banco. Também serão preservados os identificadores do provedor e da transação externa.
+A `idempotencyKey` será persistida e protegida por constraint de unicidade no banco. Os identificadores do provedor e da transação externa também serão preservados para rastreabilidade e resolução de referências.
 
 Processar a mesma operação lógica múltiplas vezes deve resultar em apenas um efeito financeiro.
 
 O replay com a mesma chave e o mesmo payload deverá retornar o resultado anteriormente persistido. Reutilizar a chave com payload diferente deverá produzir conflito, sem novo efeito financeiro.
 
+O resultado observado no primeiro processamento, incluindo o saldo resultante, é persistido junto à `WagerTransaction` para permitir replays determinísticos sem consultar o saldo atual da wallet.
+
 ### Consequências
 
 - a idempotência passa a fazer parte do modelo de persistência e da estratégia transacional, não apenas de middleware;
-- a resposta do primeiro processamento precisa ser suficiente para reproduzir replays determinísticos;
-- constraints de unicidade serão a garantia final contra duplicidade entre múltiplas instâncias.
+
+- o primeiro processamento precisa persistir dados suficientes para reproduzir a resposta original;
+
+- constraints de unicidade no PostgreSQL serão a garantia final contra duplicidade entre múltiplas instâncias;
+
+- replays não causam novo débito, crédito ou lançamento no ledger.
 
 ---
 

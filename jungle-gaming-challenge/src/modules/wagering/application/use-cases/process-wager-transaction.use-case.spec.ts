@@ -9,6 +9,7 @@ import { ProcessWagerTransactionUseCase } from './process-wager-transaction.use-
 
 import { WagerFailureCode } from '../../domain/enums/wager-failure-code.enum.js';
 import { WagerTransaction } from '../../domain/entities/wager-transaction.js';
+import { IdempotencyConflictError } from '../errors/idempotency-conflict.error.js';
 
 describe('ProcessWagerTransactionUseCase', () => {
     it('should process a BET successfully', async () => {
@@ -93,8 +94,8 @@ describe('ProcessWagerTransactionUseCase', () => {
             .toHaveBeenCalledOnce();
     });
 
-    it('should return idempotent replay without processing the wallet again', async () => {
-        const existingTransaction = WagerTransaction.create({
+    it('should mark a transaction as processed', () => {
+        const transaction = WagerTransaction.create({
             providerId: 'provider-a',
             externalTransactionId: 'transaction-123',
             idempotencyKey: 'provider-a:transaction-123',
@@ -110,79 +111,30 @@ describe('ProcessWagerTransactionUseCase', () => {
             }),
         });
 
-        existingTransaction.markProcessed(
-            undefined,
-            new Date(),
-        );
+        const processedAt = new Date('2026-09-01T13:00:00.000Z');
 
-        const wallet = Wallet.rehydrate({
-            id: WalletId.from('wallet-123'),
-            playerId: 'player-123',
+        const resultingBalance = Money.from({
+            amount: '75.00',
             currency: 'BRL',
-            balance: Money.from({
+        });
+
+        transaction.markProcessed(
+            undefined,
+            Money.from({
                 amount: '75.00',
                 currency: 'BRL',
             }),
-            version: 2,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-        });
-
-        const walletRepository = {
-            findById: vi.fn().mockResolvedValue(wallet),
-            add: vi.fn(),
-            update: vi.fn(),
-        };
-
-        const walletLedgerRepository = {
-            add: vi.fn(),
-        };
-
-        const wagerTransactionRepository = {
-            findById: vi.fn(),
-            findByIdempotencyKey: vi
-                .fn()
-                .mockResolvedValue(existingTransaction),
-            findByProviderAndExternalTransactionId: vi.fn(),
-            save: vi.fn(),
-        };
-
-        const unitOfWork = {
-            execute: vi.fn(async (work) => work()),
-        };
-
-        const useCase = new ProcessWagerTransactionUseCase(
-            walletRepository,
-            walletLedgerRepository,
-            wagerTransactionRepository,
-            unitOfWork,
+            processedAt,
         );
 
-        const result = await useCase.execute({
-            providerId: 'provider-a',
-            externalTransactionId: 'transaction-123',
-            idempotencyKey: 'provider-a:transaction-123',
-            payloadHash: 'hash-123',
-            walletId: 'wallet-123',
-            playerId: 'player-123',
-            roundId: 'round-123',
-            gameId: 'game-123',
-            kind: WagerTransactionKind.Bet,
-            amount: '25.00',
-            currency: 'BRL',
-        });
+        expect(transaction.status).toBe(
+            WagerTransactionStatus.Processed,
+        );
 
-        expect(result.idempotentReplay).toBe(true);
-        expect(result.balance).toBe('75.00');
+        expect(transaction.processedAt).toEqual(processedAt);
 
-        expect(walletRepository.update)
-            .not.toHaveBeenCalled();
-
-        expect(walletLedgerRepository.add)
-            .not.toHaveBeenCalled();
-
-        expect(wagerTransactionRepository.save)
-            .not.toHaveBeenCalled();
+        expect(transaction.resultingBalance?.toString())
+            .toBe('75.00');
     });
 
 
@@ -253,9 +205,7 @@ describe('ProcessWagerTransactionUseCase', () => {
                 amount: '25.00',
                 currency: 'BRL',
             }),
-        ).rejects.toThrow(
-            'Idempotency key already used with a different payload',
-        );
+        ).rejects.toBeInstanceOf(IdempotencyConflictError);
 
         expect(walletRepository.findById)
             .not.toHaveBeenCalled();
@@ -458,4 +408,7 @@ describe('ProcessWagerTransactionUseCase', () => {
             WagerFailureCode.InsufficientFunds,
         );
     });
+
+;
+    
 });

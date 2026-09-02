@@ -14,6 +14,7 @@ import { WalletConcurrencyConflictError } from '../../../wallet/domain/errors/wa
 import { UnitOfWork } from '../../../../shared/application/ports/unit-of-work.js';
 import { WagerFailureCode } from '../../domain/enums/wager-failure-code.enum.js';
 
+import { IdempotencyConflictError } from '../errors/idempotency-conflict.error.js';
 
 const MAX_CONCURRENCY_ATTEMPTS = 2;
 
@@ -85,9 +86,7 @@ export class ProcessWagerTransactionUseCase {
 
       if (existing) {
         if (!existing.matchesPayload(input.payloadHash)) {
-          throw new Error(
-            'Idempotency key already used with a different payload',
-          );
+          throw new IdempotencyConflictError();
         }
 
         const existingWallet =
@@ -164,6 +163,7 @@ export class ProcessWagerTransactionUseCase {
         ) {
           transaction.reject(
             WagerFailureCode.InsufficientFunds,
+            wallet.balance,
           );
 
           await this.wagerTransactionRepository.save(
@@ -199,6 +199,7 @@ export class ProcessWagerTransactionUseCase {
 
       transaction.markProcessed(
         undefined,
+        wallet.balance,
         new Date(),
       );
 
