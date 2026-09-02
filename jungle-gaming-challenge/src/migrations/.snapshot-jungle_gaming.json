@@ -134,7 +134,7 @@
           "autoincrement": false,
           "primary": false,
           "nullable": false,
-          "unique": true,
+          "unique": false,
           "length": 200,
           "precision": null,
           "scale": null,
@@ -318,11 +318,23 @@
       "indexes": [
         {
           "columnNames": [
+            "provider_id",
+            "external_transaction_id"
+          ],
+          "composite": true,
+          "constraint": true,
+          "keyName": "uq_wager_transactions_provider_external_transaction",
+          "primary": false,
+          "unique": true
+        },
+        {
+          "columnNames": [
+            "provider_id",
             "idempotency_key"
           ],
-          "composite": false,
+          "composite": true,
           "constraint": true,
-          "keyName": "wager_transactions_idempotency_key_unique",
+          "keyName": "uq_wager_transactions_provider_idempotency_key",
           "primary": false,
           "unique": true
         },
@@ -334,28 +346,6 @@
           "constraint": true,
           "keyName": "wager_transactions_pkey",
           "primary": true,
-          "unique": true
-        },
-        {
-          "columnNames": [
-            "provider_id",
-            "external_transaction_id"
-          ],
-          "composite": true,
-          "constraint": false,
-          "keyName": "wager_transactions_provider_id_external_transaction_id_index",
-          "primary": false,
-          "unique": false
-        },
-        {
-          "columnNames": [
-            "provider_id",
-            "external_transaction_id"
-          ],
-          "composite": true,
-          "constraint": true,
-          "keyName": "wager_transactions_provider_id_external_transaction_id_unique",
-          "primary": false,
           "unique": true
         },
         {

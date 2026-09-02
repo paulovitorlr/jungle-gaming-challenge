@@ -178,4 +178,166 @@ describe('WagerTransaction persistence', () => {
       ),
     ).toBe(true);
   });
+
+  it('should reject duplicated idempotency key for the same provider', async () => {
+    const walletId = WalletId.create();
+
+    const firstTransaction = WagerTransaction.create({
+      providerId: 'provider-a',
+      externalTransactionId: 'external-1',
+      idempotencyKey: 'idempotency-1',
+      payloadHash: 'hash-1',
+      walletId,
+      playerId: 'player-1',
+      roundId: 'round-1',
+      gameId: 'game-1',
+      kind: WagerTransactionKind.Bet,
+      money: Money.from({
+        amount: '10.00',
+        currency: 'BRL',
+      }),
+    });
+
+    const secondTransaction = WagerTransaction.create({
+      providerId: 'provider-a',
+      externalTransactionId: 'external-2',
+      idempotencyKey: 'idempotency-1',
+      payloadHash: 'hash-2',
+      walletId,
+      playerId: 'player-1',
+      roundId: 'round-2',
+      gameId: 'game-1',
+      kind: WagerTransactionKind.Bet,
+      money: Money.from({
+        amount: '20.00',
+        currency: 'BRL',
+      }),
+    });
+
+    await wagerTransactionRepository.save(firstTransaction);
+
+    await expect(
+      wagerTransactionRepository.save(secondTransaction),
+    ).rejects.toThrow();
+  });
+
+  it('should allow the same idempotency key for different providers', async () => {
+    const walletId = WalletId.create();
+
+    const firstTransaction = WagerTransaction.create({
+      providerId: 'provider-a',
+      externalTransactionId: 'external-1',
+      idempotencyKey: 'same-key',
+      payloadHash: 'hash-1',
+      walletId,
+      playerId: 'player-1',
+      roundId: 'round-1',
+      gameId: 'game-1',
+      kind: WagerTransactionKind.Bet,
+      money: Money.from({
+        amount: '10.00',
+        currency: 'BRL',
+      }),
+    });
+
+    const secondTransaction = WagerTransaction.create({
+      providerId: 'provider-b',
+      externalTransactionId: 'external-2',
+      idempotencyKey: 'same-key',
+      payloadHash: 'hash-2',
+      walletId,
+      playerId: 'player-1',
+      roundId: 'round-2',
+      gameId: 'game-1',
+      kind: WagerTransactionKind.Bet,
+      money: Money.from({
+        amount: '20.00',
+        currency: 'BRL',
+      }),
+    });
+
+    await wagerTransactionRepository.save(firstTransaction);
+    await wagerTransactionRepository.save(secondTransaction);
+  });
+
+  it('should reject duplicated external transaction id for the same provider', async () => {
+    const walletId = WalletId.create();
+
+    const firstTransaction = WagerTransaction.create({
+      providerId: 'provider-a',
+      externalTransactionId: 'external-1',
+      idempotencyKey: 'idempotency-1',
+      payloadHash: 'hash-1',
+      walletId,
+      playerId: 'player-1',
+      roundId: 'round-1',
+      gameId: 'game-1',
+      kind: WagerTransactionKind.Bet,
+      money: Money.from({
+        amount: '10.00',
+        currency: 'BRL',
+      }),
+    });
+
+    const secondTransaction = WagerTransaction.create({
+      providerId: 'provider-a',
+      externalTransactionId: 'external-1',
+      idempotencyKey: 'idempotency-2',
+      payloadHash: 'hash-2',
+      walletId,
+      playerId: 'player-1',
+      roundId: 'round-2',
+      gameId: 'game-1',
+      kind: WagerTransactionKind.Bet,
+      money: Money.from({
+        amount: '20.00',
+        currency: 'BRL',
+      }),
+    });
+
+    await wagerTransactionRepository.save(firstTransaction);
+
+    await expect(
+      wagerTransactionRepository.save(secondTransaction),
+    ).rejects.toThrow();
+  });
+
+  it('should allow the same external transaction id for different providers', async () => {
+    const walletId = WalletId.create();
+
+    const firstTransaction = WagerTransaction.create({
+      providerId: 'provider-a',
+      externalTransactionId: 'same-external-id',
+      idempotencyKey: 'idempotency-1',
+      payloadHash: 'hash-1',
+      walletId,
+      playerId: 'player-1',
+      roundId: 'round-1',
+      gameId: 'game-1',
+      kind: WagerTransactionKind.Bet,
+      money: Money.from({
+        amount: '10.00',
+        currency: 'BRL',
+      }),
+    });
+
+    const secondTransaction = WagerTransaction.create({
+      providerId: 'provider-b',
+      externalTransactionId: 'same-external-id',
+      idempotencyKey: 'idempotency-2',
+      payloadHash: 'hash-2',
+      walletId,
+      playerId: 'player-1',
+      roundId: 'round-2',
+      gameId: 'game-1',
+      kind: WagerTransactionKind.Bet,
+      money: Money.from({
+        amount: '20.00',
+        currency: 'BRL',
+      }),
+    });
+
+    await wagerTransactionRepository.save(firstTransaction);
+    await wagerTransactionRepository.save(secondTransaction);
+  });
 });

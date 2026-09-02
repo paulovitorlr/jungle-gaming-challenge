@@ -1,4 +1,5 @@
 import {
+  Check,
   Entity,
   Index,
   PrimaryKey,
@@ -9,15 +10,22 @@ import {
 @Entity({ tableName: 'wager_transactions' })
 
 @Unique({
+  name: 'uq_wager_transactions_provider_external_transaction',
   properties: ['providerId', 'externalTransactionId'],
+})
+
+@Unique({
+  name: 'uq_wager_transactions_provider_idempotency_key',
+  properties: ['providerId', 'idempotencyKey'],
 })
 
 @Index({
   properties: ['walletId'],
 })
 
-@Index({
-  properties: ['providerId', 'externalTransactionId'],
+@Check({
+  name: 'wager_transactions_amount_positive_check',
+  expression: '"amount" > 0',
 })
 
 export class WagerTransactionOrmEntity {
@@ -45,7 +53,6 @@ export class WagerTransactionOrmEntity {
     fieldName: 'idempotency_key',
     type: 'string',
     length: 200,
-    unique: true,
   })
   idempotencyKey!: string;
 
