@@ -64,7 +64,9 @@ O estado financeiro precisa continuar correto mesmo com mensagens duplicadas, at
 
 Fluxos assíncronos serão modelados por eventos ou mensagens explícitos.
 
-Será utilizada infraestrutura compatível com SQS como mecanismo de transporte.
+Será utilizada infraestrutura compatível com SQS como mecanismo de transporte, executada localmente por LocalStack, MiniStack ou alternativa compatível.
+
+O sistema assumirá entrega *at-least-once*. Duplicidade, reenvio e processamento após falha serão tratados como condições normais, não excepcionais.
 
 O comportamento orientado a eventos será introduzido somente após o fluxo financeiro síncrono subjacente estar correto.
 
@@ -72,7 +74,8 @@ O comportamento orientado a eventos será introduzido somente após o fluxo fina
 
 - consumidores devem ser idempotentes;
 - a entrega de mensagens não será tratada como exatamente uma vez;
-- retry e tratamento de falhas precisarão ser projetados explicitamente.
+- retry, DLQ e recuperação após crash precisarão ser projetados explicitamente;
+- a ordem global de mensagens não será usada como garantia de consistência financeira.
 
 ---
 
@@ -80,7 +83,7 @@ O comportamento orientado a eventos será introduzido somente após o fluxo fina
 
 ### Status
 
-Aceita.
+Aceita e implementada no recorte de wallet e ledger.
 
 ### Contexto
 
@@ -90,10 +93,14 @@ Correção financeira exige transações fortes, constraints, índices e mecanis
 
 PostgreSQL será a fonte durável principal de verdade para o estado financeiro.
 
+No recorte já implementado, o banco armazena `Wallet` e `WalletLedgerEntry` por meio de migrations versionadas e reversíveis. As tabelas possuem foreign key, índices, unicidade e `CHECK constraints` para reforçar as invariantes que não podem depender somente do código da aplicação.
+
 ### Consequências
 
 - garantias importantes devem ser reforçadas tanto pela aplicação quanto pelo banco quando apropriado;
-- transações de banco definirão fronteiras atômicas para alterações financeiras relacionadas.
+- transações de banco definirão fronteiras atômicas para alterações financeiras relacionadas;
+- o schema rejeita saldo negativo, versão inválida, lançamento com valor não positivo e lançamento incompatível com os saldos anterior e posterior;
+- a foreign key impede que um lançamento do ledger exista sem uma wallet correspondente.
 
 ---
 
@@ -101,7 +108,7 @@ PostgreSQL será a fonte durável principal de verdade para o estado financeiro.
 
 ### Status
 
-Aceita.
+Aceita e implementada no primeiro recorte persistente.
 
 ### Contexto
 
@@ -111,13 +118,17 @@ O desafio recomenda MikroORM, e o projeto precisa integrar PostgreSQL sem compro
 
 MikroORM será utilizado como camada de ORM/data mapper.
 
-Sua configuração será introduzida quando existir a primeira entidade persistente real, evitando criar entidades artificiais apenas para satisfazer o framework durante o bootstrap.
+As entidades de persistência são separadas das entidades de domínio. `WalletMapper` e `WalletLedgerMapper` realizam as conversões explicitamente, inclusive entre colunas `numeric(20, 2)` e o Value Object `Money`.
+
+A configuração utiliza integração com NestJS, PostgreSQL, descoberta explícita das entidades e suporte a migrations pela CLI.
 
 ### Consequências
 
 - mapeamentos de persistência não devem redefinir regras de domínio;
 - migrations deverão permanecer explícitas, versionadas e reversíveis;
-- entidades de domínio não devem depender do MikroORM para expressar suas invariantes.
+- entidades de domínio não devem depender do MikroORM para expressar suas invariantes;
+- repositórios não executam `flush()` isoladamente quando participam de uma operação financeira composta;
+- testes de integração usam o PostgreSQL real para validar o comportamento transacional.
 
 ---
 
@@ -190,13 +201,19 @@ Deduplicação apenas em memória é insuficiente porque se perde após reinicia
 
 A idempotência será persistente.
 
-Um identificador de negócio ou chave de idempotência será armazenado e protegido por constraints de unicidade no banco.
+O endpoint de transações exigirá o header `Idempotency-Key`. A requisição será normalizada para JSON canônico e terá um `payloadHash` persistido.
+
+Um identificador de negócio ou chave de idempotência será armazenado e protegido por constraints de unicidade no banco. Também serão preservados os identificadores do provedor e da transação externa.
 
 Processar a mesma operação lógica múltiplas vezes deve resultar em apenas um efeito financeiro.
 
+O replay com a mesma chave e o mesmo payload deverá retornar o resultado anteriormente persistido. Reutilizar a chave com payload diferente deverá produzir conflito, sem novo efeito financeiro.
+
 ### Consequências
 
-A idempotência passa a fazer parte do modelo de persistência e da estratégia transacional, não apenas de middleware.
+- a idempotência passa a fazer parte do modelo de persistência e da estratégia transacional, não apenas de middleware;
+- a resposta do primeiro processamento precisa ser suficiente para reproduzir replays determinísticos;
+- constraints de unicidade serão a garantia final contra duplicidade entre múltiplas instâncias.
 
 ---
 
@@ -204,7 +221,7 @@ A idempotência passa a fazer parte do modelo de persistência e da estratégia 
 
 ### Status
 
-Aceita e parcialmente implementada no domínio.
+Aceita e implementada no domínio e na persistência da wallet.
 
 ### Contexto
 
@@ -234,14 +251,24 @@ A invariante adotada é:
 
 > Toda alteração de saldo deve possuir um lançamento correspondente no ledger.
 
-A alteração da `Wallet` e a persistência do `WalletLedgerEntry` deverão compartilhar a mesma fronteira transacional no PostgreSQL.
+A alteração da `Wallet` e a persistência do `WalletLedgerEntry` compartilham a mesma fronteira transacional no PostgreSQL por meio de uma Unit of Work.
+
+O schema reforça a consistência do ledger com:
+
+- foreign key de `wallet_ledger_entries.wallet_id` para `wallets.id`;
+- unicidade de `walletId + transactionId`;
+- valor do lançamento obrigatoriamente maior que zero;
+- saldos anterior e posterior não negativos;
+- `CHECK` matemático para `CREDIT` e `DEBIT`;
+- índice por `walletId + createdAt + id`, preparado para paginação estável.
 
 ### Consequências
 
 - o ledger passa a ser um mecanismo central de auditabilidade;
 - histórico financeiro concluído não deve ser apagado ou silenciosamente reescrito;
-- a camada de aplicação deverá persistir carteira e lançamento de forma atômica;
-- a infraestrutura não poderá tratar atualização de saldo e criação do ledger como duas operações independentes.
+- a camada de aplicação deve executar carteira e lançamento dentro da Unit of Work;
+- a infraestrutura não trata atualização de saldo e criação do ledger como commits independentes;
+- testes de integração comprovam commit conjunto e rollback SQL conjunto.
 
 ---
 
@@ -249,7 +276,7 @@ A alteração da `Wallet` e a persistência do `WalletLedgerEntry` deverão comp
 
 ### Status
 
-Aceita em princípio; persistência e testes de integração ainda pendentes.
+Aceita e parcialmente implementada; teste concorrente determinístico ainda pendente.
 
 ### Contexto
 
@@ -277,9 +304,20 @@ Processo A persiste a alteração -> version 6
 Processo B tenta persistir esperando version 5 -> conflito
 ```
 
-A camada de persistência deverá realizar atualização condicionada à versão esperada.
+A camada de persistência realiza atualização condicionada à versão esperada:
 
-A implementação final será validada com testes de integração determinísticos envolvendo concorrência real contra PostgreSQL.
+```sql
+UPDATE wallets
+SET balance = :balance,
+    version = :nextVersion,
+    updated_at = :updatedAt
+WHERE id = :walletId
+  AND version = :expectedVersion;
+```
+
+Uma linha afetada representa sucesso. Zero linhas afetadas representam conflito concorrente.
+
+O repositório e os dois resultados possíveis da atualização condicional já possuem testes unitários. A implementação final ainda será validada com teste de integração determinístico envolvendo concorrência real contra PostgreSQL.
 
 ### Critérios de Validação
 
@@ -304,7 +342,8 @@ Trade-offs:
 
 - conflitos precisarão ser tratados pela camada de aplicação;
 - sob alta contenção, algumas operações poderão precisar ser repetidas;
-- a garantia depende de atualização condicional correta no banco.
+- a garantia depende de atualização condicional correta no banco;
+- a estratégia só será considerada concluída após validar o cenário obrigatório de duas apostas simultâneas sobre a mesma wallet.
 
 ---
 
@@ -312,7 +351,7 @@ Trade-offs:
 
 ### Status
 
-Candidata.
+Aceita em princípio; implementação pendente.
 
 ### Contexto
 
@@ -322,15 +361,18 @@ Publicar diretamente após o commit cria uma janela de falha na qual o estado fo
 
 ### Direção Pretendida
 
-Para eventos cuja entrega seja necessária após uma operação financeira bem-sucedida, será considerada a estratégia de transactional outbox.
+Para eventos cuja entrega seja necessária após uma operação financeira bem-sucedida, será adotada a estratégia de transactional outbox.
 
-O estado de negócio e o registro da outbox seriam persistidos na mesma transação PostgreSQL, enquanto um processo separado publicaria mensagens pendentes.
+O estado de negócio e o registro da outbox serão persistidos na mesma transação PostgreSQL, enquanto um processo separado publicará mensagens pendentes no SQS.
 
 ### Consequências
 
-A estratégia adiciona complexidade de persistência e processamento em background, mas elimina uma falha crítica de dual write.
+- a estratégia adiciona complexidade de persistência e processamento em background;
+- o banco e o broker não precisam participar de uma transação distribuída;
+- falhas de publicação não perdem o evento, que permanece pendente na outbox;
+- o publicador precisará de retry, marcação de entrega e recuperação após crash.
 
-A decisão final será registrada após a implementação do fluxo transacional principal.
+A decisão será atualizada com detalhes operacionais após a implementação do publicador.
 
 ---
 
@@ -397,8 +439,132 @@ Benefícios:
 Trade-offs:
 
 - alterações financeiras legítimas precisam passar pela `Wallet`;
-- a camada de persistência deverá respeitar o estado e o versionamento definidos pelo Aggregate Root;
-- atomicidade entre `Wallet` e ledger ainda depende da fronteira transacional que será implementada na infraestrutura.
+- a camada de persistência deve respeitar o estado e o versionamento definidos pelo Aggregate Root;
+- casos de uso financeiros precisam ser executados dentro da Unit of Work para preservar a atomicidade já oferecida pela infraestrutura.
+
+---
+
+## ADR-011 — Unit of Work como Fronteira Transacional
+
+### Status
+
+Aceita e implementada no recorte de wallet e ledger.
+
+### Contexto
+
+Persistir a wallet e o lançamento do ledger em operações independentes permitiria saldo sem histórico ou histórico sem saldo.
+
+O mesmo problema será ampliado quando inbox, transação financeira e outbox precisarem participar da mesma operação SQL.
+
+### Decisão
+
+A aplicação utilizará uma abstração `UnitOfWork` para delimitar operações atômicas.
+
+```ts
+unitOfWork.execute(async () => {
+  const updated = await walletRepository.update(
+    wallet,
+    expectedVersion,
+  );
+
+  if (!updated) {
+    throw new Error('Wallet version conflict');
+  }
+
+  await walletLedgerRepository.add(entry);
+});
+```
+
+A implementação `MikroOrmUnitOfWork` utiliza `EntityManager.transactional()`.
+
+Os repositórios registram entidades ou executam comandos dentro do contexto transacional, mas não fazem `flush()` isolado para concluir parcialmente uma operação composta. O commit ocorre apenas quando o callback termina com sucesso; exceções provocam rollback.
+
+### Validação
+
+Testes de integração contra PostgreSQL real comprovam:
+
+- commit conjunto de wallet e ledger;
+- rollback conjunto após os `INSERTs` terem sido enviados ao banco;
+- ausência de `flush()` isolado nos repositórios.
+
+### Consequências
+
+Benefícios:
+
+- fronteira transacional explícita para os casos de uso;
+- infraestrutura reutilizável pelos futuros fluxos de inbox e outbox;
+- falhas não deixam efeitos financeiros parcialmente persistidos.
+
+Trade-offs:
+
+- casos de uso precisam respeitar a fronteira da Unit of Work;
+- operações externas, como publicação em SQS, não devem ocorrer dentro da transação SQL;
+- a entrega de mensagens continuará exigindo transactional outbox.
+
+---
+
+## ADR-012 — Inbox Persistente para Consumo At-Least-Once
+
+### Status
+
+Aceita em princípio; implementação pendente.
+
+### Contexto
+
+O broker pode entregar a mesma mensagem mais de uma vez, reenviá-la após timeout ou entregá-la fora da ordem de negócio esperada.
+
+Deduplicar apenas em memória não funciona após reinicialização e não coordena múltiplas instâncias do consumidor.
+
+### Decisão
+
+Mensagens consumidas serão registradas em uma inbox persistente antes de serem consideradas processadas.
+
+Inbox, transação financeira, wallet, ledger e outbox participarão da mesma transação SQL quando fizerem parte da mesma operação.
+
+Mensagens com referência de negócio ainda inexistente não serão descartadas. A transação ficará em estado `PENDING_REFERENCE` até que possa ser reprocessada de maneira segura.
+
+### Consequências
+
+- duplicidades serão reconhecidas por dados persistidos;
+- ACK ao broker só deverá ocorrer após commit bem-sucedido;
+- falhas temporárias poderão usar retry com política explícita;
+- falhas não recuperáveis deverão ser encaminhadas para DLQ;
+- o consumidor precisará recuperar registros incompletos após crash.
+
+---
+
+## ADR-013 — Reconciliação entre Wallet e Ledger
+
+### Status
+
+Aceita em princípio; implementação pendente.
+
+### Contexto
+
+Mesmo com invariantes de domínio, constraints e transações, o sistema precisa detectar divergências causadas por bugs, alterações operacionais indevidas ou falhas futuras de implementação.
+
+### Decisão
+
+Será implementado um processo de reconciliação que reconstrói o saldo a partir dos lançamentos do ledger e compara o resultado com `wallet.balance`.
+
+```text
+saldo reconstruído = soma(CREDIT) - soma(DEBIT)
+```
+
+A invariante verificada será:
+
+```text
+wallet.balance == saldo reconstruído pelo ledger
+```
+
+Divergências deverão ser reportadas de forma explícita. A reconciliação não corrigirá silenciosamente dados financeiros.
+
+### Consequências
+
+- o ledger precisa permanecer imutável e consultável;
+- a consulta deve produzir resultado determinístico;
+- divergências tornam-se observáveis e auditáveis;
+- qualquer estratégia de correção exigirá decisão operacional separada.
 
 ---
 
@@ -412,6 +578,15 @@ Atualmente:
 - representação monetária com `decimal.js` já está definida;
 - `Wallet` já utiliza versionamento de domínio;
 - saldo e ledger já são relacionados pelas operações de crédito e débito;
-- persistência transacional, optimistic locking no PostgreSQL, idempotência persistente, mensageria e outbox ainda serão validados durante as próximas etapas.
+- `Wallet` e `WalletLedgerEntry` possuem modelos e mappers de persistência separados do domínio;
+- PostgreSQL e MikroORM estão configurados com migration inicial versionada;
+- constraints do banco reforçam as principais invariantes de wallet e ledger;
+- Unit of Work, commit conjunto e rollback SQL conjunto foram validados por testes de integração;
+- a atualização otimista condicionada por versão está implementada no repositório e coberta por testes unitários;
+- ainda falta ligar a persistência aos casos de uso financeiros;
+- o teste concorrente real obrigatório ainda está pendente;
+- unicidade de wallet por `playerId + currency` e abertura com saldo inicial positivo, `OPENING` e `CREDIT` ainda precisam ser concluídas;
+- endpoints HTTP, cursor opaco do ledger e consultas de transação ainda estão pendentes;
+- idempotência persistente com `Idempotency-Key` e `payloadHash`, referências `PENDING_REFERENCE`, inbox, outbox, SQS, retry, DLQ, crash recovery e reconciliação ainda serão implementados.
 
 O documento deverá ser atualizado sempre que uma decisão inicialmente marcada como candidata ou aceita em princípio for confirmada, alterada ou descartada pela implementação.
