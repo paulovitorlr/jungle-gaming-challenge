@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { EntityManager } from '@mikro-orm/postgresql';
-
+import { WalletId } from '../../../../../../shared/domain/value-objects/wallet-id.vo.js';
+import { WalletLedgerOrmEntity } from '../entities/wallet-ledger.orm-entity.js';
 import {
   WalletLedgerRepository,
 } from '../../../../domain/repositories/wallet-ledger.repository.js';
@@ -20,4 +21,22 @@ export class MikroOrmWalletLedgerRepository
 
     this.entityManager.persist(entity);
   }
+  async findByWalletId(
+  walletId: WalletId,
+): Promise<WalletLedgerEntry[]> {
+  const entities = await this.entityManager.find(
+    WalletLedgerOrmEntity,
+    {
+      walletId: walletId.toString(),
+    },
+    {
+      orderBy: {
+        createdAt: 'asc',
+        id: 'asc',
+      },
+    },
+  );
+
+  return entities.map(WalletLedgerMapper.toDomain);
+}
 }
