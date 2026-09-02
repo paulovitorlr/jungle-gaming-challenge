@@ -15,6 +15,7 @@ import { UnitOfWork } from '../../../../shared/application/ports/unit-of-work.js
 import { WagerFailureCode } from '../../domain/enums/wager-failure-code.enum.js';
 
 import { IdempotencyConflictError } from '../errors/idempotency-conflict.error.js';
+import { UniqueConstraintViolationError } from '../../../../shared/application/errors/unique-constraint-violation.error.js';
 
 const MAX_CONCURRENCY_ATTEMPTS = 2;
 
@@ -60,14 +61,21 @@ export class ProcessWagerTransactionUseCase {
       try {
         return await this.processAttempt(input);
       } catch (error) {
+        const isIdempotencyRace =
+          error instanceof UniqueConstraintViolationError &&
+          error.constraint ===
+          'uq_wager_transactions_provider_idempotency_key';
+
         const shouldRetry =
-          error instanceof WalletConcurrencyConflictError &&
+          (
+            error instanceof WalletConcurrencyConflictError ||
+            isIdempotencyRace
+          ) &&
           attempt < MAX_CONCURRENCY_ATTEMPTS;
 
         if (shouldRetry) {
           continue;
         }
-
         throw error;
       }
     }
@@ -81,6 +89,7 @@ export class ProcessWagerTransactionUseCase {
     return this.unitOfWork.execute(async () => {
       const existing =
         await this.wagerTransactionRepository.findByIdempotencyKey(
+          input.providerId,
           input.idempotencyKey,
         );
 

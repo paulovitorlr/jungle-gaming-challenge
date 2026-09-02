@@ -32,11 +32,13 @@ export class MikroOrmWagerTransactionRepository
   }
 
   async findByIdempotencyKey(
+    providerId: string,
     idempotencyKey: string,
   ): Promise<WagerTransaction | null> {
     const entity = await this.entityManager.findOne(
       WagerTransactionOrmEntity,
       {
+        providerId,
         idempotencyKey,
       },
     );

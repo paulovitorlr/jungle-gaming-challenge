@@ -7,6 +7,7 @@ export abstract class WagerTransactionRepository {
   ): Promise<WagerTransaction | null>;
 
   abstract findByIdempotencyKey(
+    providerId: string,
     idempotencyKey: string,
   ): Promise<WagerTransaction | null>;
 

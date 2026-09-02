@@ -1,21 +1,14 @@
-import {
-  Global,
-  Module,
-} from '@nestjs/common';
+import { Module } from '@nestjs/common';
 
-import {
-  UNIT_OF_WORK,
-} from '../../application/ports/unit-of-work.js';
-import {
-  MikroOrmUnitOfWork,
-} from './mikro-orm-unit-of-work.js';
+import { UNIT_OF_WORK } from '../../application/ports/unit-of-work.js';
+import { MikroOrmUnitOfWork } from './mikro-orm-unit-of-work.js';
 
-@Global()
 @Module({
   providers: [
+    MikroOrmUnitOfWork,
     {
       provide: UNIT_OF_WORK,
-      useClass: MikroOrmUnitOfWork,
+      useExisting: MikroOrmUnitOfWork,
     },
   ],
   exports: [

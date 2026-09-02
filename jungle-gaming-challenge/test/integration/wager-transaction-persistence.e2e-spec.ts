@@ -7,26 +7,26 @@ import {
 import {
   UNIT_OF_WORK,
   type UnitOfWork,
-} from '../src/shared/application/ports/unit-of-work.js';
+} from '../../src/shared/application/ports/unit-of-work.js';
 
-import { AppModule } from '../src/app.module.js';
+import { AppModule } from '../../src/app.module.js';
 
-import { Money } from '../src/shared/domain/value-objects/money.vo.js';
-import { Wallet } from '../src/shared/domain/entities/wallet.entity.js';
-import { WalletId } from '../src/shared/domain/value-objects/wallet-id.vo.js';
+import { Money } from '../../src/shared/domain/value-objects/money.vo.js';
+import { Wallet } from '../../src/shared/domain/entities/wallet.entity.js';
+import { WalletId } from '../../src/shared/domain/value-objects/wallet-id.vo.js';
 
 import {
   WALLET_REPOSITORY,
   type WalletRepository,
-} from '../src/modules/wallet/domain/repositories/wallet.repository.js';
+} from '../../src/modules/wallet/domain/repositories/wallet.repository.js';
 
-import { WagerTransaction } from '../src/modules/wagering/domain/entities/wager-transaction.js';
-import { WagerTransactionKind } from '../src/modules/wagering/domain/enums/wager-transaction-kind.enum.js';
-import { WagerTransactionRepository } from '../src/modules/wagering/domain/repositories/wager-transaction.repository.js';
+import { WagerTransaction } from '../../src/modules/wagering/domain/entities/wager-transaction.js';
+import { WagerTransactionKind } from '../../src/modules/wagering/domain/enums/wager-transaction-kind.enum.js';
+import { WagerTransactionRepository } from '../../src/modules/wagering/domain/repositories/wager-transaction.repository.js';
 
-import { WalletOrmEntity } from '../src/modules/wallet/infrastructure/persistence/mikro-orm/entities/wallet.orm-entity.js';
-import { WalletLedgerOrmEntity } from '../src/modules/wallet/infrastructure/persistence/mikro-orm/entities/wallet-ledger.orm-entity.js';
-import { WagerTransactionOrmEntity } from '../src/modules/wagering/infrastructure/persistence/mikro-orm/entities/wager-transaction.orm-entity.js';
+import { WalletOrmEntity } from '../../src/modules/wallet/infrastructure/persistence/mikro-orm/entities/wallet.orm-entity.js';
+import { WalletLedgerOrmEntity } from '../../src/modules/wallet/infrastructure/persistence/mikro-orm/entities/wallet-ledger.orm-entity.js';
+import { WagerTransactionOrmEntity } from '../../src/modules/wagering/infrastructure/persistence/mikro-orm/entities/wager-transaction.orm-entity.js';
 
 describe('WagerTransaction persistence', () => {
   let moduleRef: TestingModule;
@@ -139,9 +139,10 @@ describe('WagerTransaction persistence', () => {
         );
 
       const byIdempotencyKey =
-        await wagerTransactionRepository.findByIdempotencyKey(
-          transaction.idempotencyKey,
-        );
+  await wagerTransactionRepository.findByIdempotencyKey(
+    transaction.providerId,
+    transaction.idempotencyKey,
+  );
 
       const byProviderAndExternal =
         await wagerTransactionRepository.findByProviderAndExternalTransactionId(
