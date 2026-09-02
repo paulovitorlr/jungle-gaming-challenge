@@ -21,6 +21,7 @@ import {
 } from '../src/modules/wallet/domain/repositories/wallet-ledger.repository.js';
 import { WalletOrmEntity } from '../src/modules/wallet/infrastructure/persistence/mikro-orm/entities/wallet.orm-entity.js';
 import { WalletLedgerOrmEntity } from '../src/modules/wallet/infrastructure/persistence/mikro-orm/entities/wallet-ledger.orm-entity.js';
+import { WagerTransactionOrmEntity } from '../src/modules/wagering/infrastructure/persistence/mikro-orm/entities/wager-transaction.orm-entity.js';
 
 describe('Wallet persistence', () => {
   let moduleRef: TestingModule;
@@ -31,18 +32,23 @@ describe('Wallet persistence', () => {
   let ledgerRepository: WalletLedgerRepository;
 
   async function cleanDatabase(): Promise<void> {
-    const em = orm.em.fork();
+  const em = orm.em.fork();
 
-    await em.nativeDelete(
-      WalletLedgerOrmEntity,
-      {},
-    );
+  await em.nativeDelete(
+    WagerTransactionOrmEntity,
+    {},
+  );
 
-    await em.nativeDelete(
-      WalletOrmEntity,
-      {},
-    );
-  }
+  await em.nativeDelete(
+    WalletLedgerOrmEntity,
+    {},
+  );
+
+  await em.nativeDelete(
+    WalletOrmEntity,
+    {},
+  );
+}
 
   beforeAll(async () => {
     moduleRef = await Test.createTestingModule({

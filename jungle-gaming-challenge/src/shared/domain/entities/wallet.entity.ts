@@ -2,6 +2,7 @@ import { Money } from '../../../shared/domain/value-objects/money.vo.js';
 import { WalletId } from '../../../shared/domain/value-objects/wallet-id.vo.js';
 import { LedgerDirection } from '../../../modules/wallet/domain/enums/ledger-direction.enum.js';
 import { WalletLedgerEntry } from '../../../modules/wallet/domain/entities/wallet-ledger-entry.js';
+import { InsufficientWalletBalanceError } from '../../../modules/wallet/domain/errors/insufficient-wallet-balance.error.js'; 
 
 type WalletProps = {
   id: WalletId;
@@ -87,7 +88,7 @@ export class Wallet {
     const balanceAfter = balanceBefore.subtract(amount);
 
     if (balanceAfter.isNegative()) {
-      throw new Error('Insufficient balance');
+      throw new InsufficientWalletBalanceError();
     }
 
     this._balance = balanceAfter;
