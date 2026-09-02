@@ -83,6 +83,29 @@ describe('WagerTransaction persistence', () => {
     await moduleRef.close();
   });
 
+  async function persistWallet(
+    walletId: WalletId,
+  ): Promise<void> {
+    const now = new Date();
+
+    const wallet = Wallet.rehydrate({
+      id: walletId,
+      playerId: 'player-1',
+      currency: 'BRL',
+      balance: Money.from({
+        amount: '100.00',
+        currency: 'BRL',
+      }),
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await unitOfWork.execute(async () => {
+      await walletRepository.add(wallet);
+    });
+  }
+
   it('should persist and retrieve a wager transaction', async () => {
     const walletId = WalletId.create();
 
@@ -139,10 +162,10 @@ describe('WagerTransaction persistence', () => {
         );
 
       const byIdempotencyKey =
-  await wagerTransactionRepository.findByIdempotencyKey(
-    transaction.providerId,
-    transaction.idempotencyKey,
-  );
+        await wagerTransactionRepository.findByIdempotencyKey(
+          transaction.providerId,
+          transaction.idempotencyKey,
+        );
 
       const byProviderAndExternal =
         await wagerTransactionRepository.findByProviderAndExternalTransactionId(
@@ -182,6 +205,7 @@ describe('WagerTransaction persistence', () => {
 
   it('should reject duplicated idempotency key for the same provider', async () => {
     const walletId = WalletId.create();
+    await persistWallet(walletId);
 
     const firstTransaction = WagerTransaction.create({
       providerId: 'provider-a',
@@ -215,15 +239,24 @@ describe('WagerTransaction persistence', () => {
       }),
     });
 
-    await wagerTransactionRepository.save(firstTransaction);
+    await unitOfWork.execute(async () => {
+      await wagerTransactionRepository.save(
+        firstTransaction,
+      );
+    });
 
     await expect(
-      wagerTransactionRepository.save(secondTransaction),
+      unitOfWork.execute(async () => {
+        await wagerTransactionRepository.save(
+          secondTransaction,
+        );
+      }),
     ).rejects.toThrow();
   });
 
   it('should allow the same idempotency key for different providers', async () => {
     const walletId = WalletId.create();
+    await persistWallet(walletId);
 
     const firstTransaction = WagerTransaction.create({
       providerId: 'provider-a',
@@ -257,12 +290,20 @@ describe('WagerTransaction persistence', () => {
       }),
     });
 
-    await wagerTransactionRepository.save(firstTransaction);
-    await wagerTransactionRepository.save(secondTransaction);
+    await unitOfWork.execute(async () => {
+      await wagerTransactionRepository.save(
+        firstTransaction,
+      );
+
+      await wagerTransactionRepository.save(
+        secondTransaction,
+      );
+    });
   });
 
   it('should reject duplicated external transaction id for the same provider', async () => {
     const walletId = WalletId.create();
+    await persistWallet(walletId);
 
     const firstTransaction = WagerTransaction.create({
       providerId: 'provider-a',
@@ -296,15 +337,24 @@ describe('WagerTransaction persistence', () => {
       }),
     });
 
-    await wagerTransactionRepository.save(firstTransaction);
+    await unitOfWork.execute(async () => {
+      await wagerTransactionRepository.save(
+        firstTransaction,
+      );
+    });
 
     await expect(
-      wagerTransactionRepository.save(secondTransaction),
+      unitOfWork.execute(async () => {
+        await wagerTransactionRepository.save(
+          secondTransaction,
+        );
+      }),
     ).rejects.toThrow();
   });
 
   it('should allow the same external transaction id for different providers', async () => {
     const walletId = WalletId.create();
+    await persistWallet(walletId);
 
     const firstTransaction = WagerTransaction.create({
       providerId: 'provider-a',
@@ -338,7 +388,14 @@ describe('WagerTransaction persistence', () => {
       }),
     });
 
-    await wagerTransactionRepository.save(firstTransaction);
-    await wagerTransactionRepository.save(secondTransaction);
+    await unitOfWork.execute(async () => {
+      await wagerTransactionRepository.save(
+        firstTransaction,
+      );
+
+      await wagerTransactionRepository.save(
+        secondTransaction,
+      );
+    });
   });
 });

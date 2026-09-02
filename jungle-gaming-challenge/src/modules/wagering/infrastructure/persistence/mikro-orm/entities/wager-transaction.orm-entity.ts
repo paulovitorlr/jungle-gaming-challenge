@@ -2,10 +2,13 @@ import {
   Check,
   Entity,
   Index,
+  ManyToOne,
   PrimaryKey,
   Property,
   Unique,
 } from '@mikro-orm/decorators/legacy';
+
+import { WalletOrmEntity } from '../../../../../wallet/infrastructure/persistence/mikro-orm/entities/wallet.orm-entity.js'; 
 
 @Entity({ tableName: 'wager_transactions' })
 
@@ -63,10 +66,12 @@ export class WagerTransactionOrmEntity {
   })
   payloadHash!: string;
 
-  @Property({
+  @ManyToOne({
+    entity: () => WalletOrmEntity,
     fieldName: 'wallet_id',
-    type: 'string',
-    length: 100,
+    mapToPk: true,
+    deleteRule: 'restrict',
+    updateRule: 'cascade',
   })
   walletId!: string;
 

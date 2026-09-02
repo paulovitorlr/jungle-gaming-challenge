@@ -21,6 +21,8 @@ import {
   DatabaseTransactionModule,
 } from './shared/infrastructure/database/database-transaction.module.js';
 
+import { MessagingPersistenceModule } from './modules/messaging/infrastructure/persistence/messaging-persistence.module.js';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -61,10 +63,12 @@ import {
     WalletPersistenceModule,
 
     WageringPersistenceModule,
+
+    MessagingPersistenceModule,
   ],
 
   controllers: [
     AppController,
   ],
 })
-export class AppModule {}
+export class AppModule { }
