@@ -1,203 +1,192 @@
 # Plano de Implementação
 
-## 1. Objetivo
+Este documento registra a estratégia incremental utilizada e o estado final de cada fase. O projeto priorizou correção financeira antes de adicionar transporte e operação distribuída.
 
-A implementação será desenvolvida de forma incremental, introduzindo complexidade apenas quando ela for necessária para resolver um problema real.
+## Visão dos checkpoints
 
-A prioridade será garantir correção primeiro e só depois adicionar infraestrutura ao redor de um domínio estável, em vez de desenhar o sistema a partir de controllers, entidades de ORM ou APIs de mensageria.
+| Fase | Objetivo                              | Estado final |
+| ---- | ------------------------------------- | ------------ |
+| 1    | Bootstrap e infraestrutura local      | Concluída    |
+| 2    | Domínio financeiro                    | Concluída    |
+| 3    | Persistência e constraints            | Concluída    |
+| 4    | Fluxo transacional e idempotência     | Concluída    |
+| 5    | Concorrência entre instâncias         | Concluída    |
+| 6    | Inbox e consumidor SQS                | Concluída    |
+| 7    | Outbox e publisher                    | Concluída    |
+| 8    | Referências fora de ordem             | Concluída    |
+| 9    | HTTP, reconciliação e observabilidade | Concluída    |
+| 10   | Hardening, testes e documentação      | Concluída    |
 
-## 2. Fase 1 — Bootstrap e Infraestrutura Local
+## Fase 1 — Bootstrap e infraestrutura local
 
-Estabelecer uma base mínima executável:
+### Entregas
 
-- NestJS com TypeScript;
-- Bun como runtime e package manager;
-- Vitest;
-- configuração por variáveis de ambiente;
-- PostgreSQL via Docker Compose;
-- endpoint de health check;
-- dependências do MikroORM;
-- documentação inicial do projeto.
+- NestJS com TypeScript estrito;
+- Bun como runtime, package manager e test runner;
+- PostgreSQL 17 e SQS FIFO via LocalStack;
+- Docker Compose e configuração por variáveis de ambiente;
+- MikroORM e migrations;
+- liveness inicial.
 
-Critério de saída:
+### Evidência
 
-- aplicação builda;
-- testes executam;
-- PostgreSQL está saudável;
-- endpoint de health responde;
-- o projeto pode ser clonado e iniciado seguindo o README.
+`bun run build`, `bun run test`, containers saudáveis e aplicação configurável por `.env`.
 
-## 3. Fase 2 — Modelagem de Domínio
+## Fase 2 — Domínio financeiro
 
-Traduzir o desafio em conceitos explícitos de domínio.
+### Entregas
 
-Atividades:
+- `Money` imutável sobre `decimal.js`;
+- `Wallet` como Aggregate Root;
+- `WalletId`, `WagerTransactionId` e factories de reidratação;
+- `WalletLedgerEntry` imutável;
+- `WagerTransaction` com estados e transições explícitas;
+- regras de `OPENING`, `BET`, `WIN`, `LOSS`, `REFUND` e `ROLLBACK`.
 
-- identificar agregados e entidades;
-- definir value objects;
-- definir invariantes financeiras;
-- definir erros de domínio;
-- definir abstrações de repositório;
-- definir domain events quando representarem fatos relevantes do negócio.
+### Evidência
 
-O domínio deve permanecer independente de NestJS, MikroORM, PostgreSQL e SQS.
+Testes unitários exercitam formato monetário, moedas, saldo, versionamento, referências, reversões e estados terminais sem infraestrutura.
 
-Critério de saída:
+## Fase 3 — Persistência e constraints
 
-- regras centrais de negócio estão representadas em código;
-- invariantes importantes possuem testes unitários;
-- testes de domínio executam sem infraestrutura.
+### Entregas
 
-## 4. Fase 3 — Persistência
-
-Introduzir persistência em PostgreSQL após a modelagem principal do domínio.
-
-Atividades:
-
-- configurar MikroORM;
-- mapear entidades persistentes;
-- implementar repositórios;
-- criar migrations versionadas;
-- definir índices e constraints;
-- estabelecer fronteiras transacionais.
-
-Atenção especial para:
-
-- constraints de idempotência;
-- consistência do ledger;
-- comportamento sob concorrência.
-
-Critério de saída:
-
-- migrations podem ser aplicadas e revertidas;
-- repositórios atendem às necessidades da aplicação;
-- garantias importantes são reforçadas pelo banco quando apropriado.
-
-## 5. Fase 4 — Fluxo Transacional Principal
-
-Implementar a principal operação financeira como uma vertical slice.
-
-O caso de uso deverá coordenar:
-
-1. validação da requisição;
-2. verificação de idempotência;
-3. carregamento da conta ou recurso;
-4. execução das regras de domínio;
-5. criação do lançamento no ledger;
-6. alteração do saldo;
-7. persistência dentro da mesma transação;
-8. retorno do resultado da aplicação.
-
-Critério de saída:
-
-- operação funciona corretamente;
-- requisições duplicadas são seguras;
-- falhas não deixam estado financeiro parcial;
-- testes de integração validam o fluxo completo.
-
-## 6. Fase 5 — Concorrência
-
-Validar explicitamente o comportamento quando múltiplas operações afetam o mesmo recurso financeiro.
-
-Estratégias candidatas:
-
-- pessimistic locking;
-- optimistic concurrency/versionamento;
-- updates SQL atômicos;
-- constraints de banco.
-
-A estratégia final será escolhida com base no modelo implementado e em testes determinísticos.
-
-Critério de saída:
-
-- débitos concorrentes não produzem saldos inválidos;
-- não existem lost updates;
-- não existem efeitos financeiros duplicados;
-- testes automatizados reproduzem cenários concorrentes.
-
-## 7. Fase 6 — Processamento Orientado a Eventos
-
-Introduzir comunicação assíncrona somente depois de o fluxo financeiro síncrono estar correto.
-
-Atividades:
-
-- configurar infraestrutura local compatível com SQS;
-- definir contratos de eventos;
-- implementar produtores e consumidores;
-- tornar consumidores idempotentes;
-- definir comportamento de retry e erro.
-
-Quando estado em banco e publicação de evento precisarem permanecer consistentes, será considerada uma estratégia de transactional outbox.
-
-Critério de saída:
-
-- eventos podem ser entregues mais de uma vez sem corromper o estado;
-- falhas podem ser retomadas;
-- processamento assíncrono não viola invariantes financeiras.
-
-## 8. Fase 7 — Camada de Aplicação e HTTP
-
-Expor as capacidades necessárias pela aplicação NestJS.
-
-Responsabilidades dessa camada:
-
-- validação de transporte;
-- autenticação e autorização quando necessário;
-- transformação de contratos HTTP em comandos/casos de uso;
-- mapeamento de erros da aplicação para respostas HTTP.
-
-Regras de negócio não devem permanecer nos controllers.
-
-## 9. Fase 8 — Estratégia de Testes
-
-Os testes serão organizados de acordo com o risco.
-
-### Testes Unitários
-
-Foco em:
-
-- value objects;
-- entidades e agregados;
-- invariantes;
-- domain services;
-- comportamentos puros da aplicação.
-
-### Testes de Integração
-
-Foco em:
-
+- entidades ORM separadas do domínio;
+- mappers explícitos;
 - repositórios PostgreSQL;
-- migrations;
-- fronteiras transacionais;
-- idempotência;
-- locking e concorrência;
-- persistência de outbox e eventos.
+- migrations versionadas e reversíveis;
+- constraints para saldo, moeda, idempotência, ledger e reversões;
+- trigger de imutabilidade do ledger;
+- `MikroOrmUnitOfWork`.
 
-### Testes End-to-End
+### Evidência
 
-Foco em poucos fluxos críticos atravessando a aplicação real via HTTP.
+Testes de integração validam commit, rollback, constraints, reidratação e atualizações condicionadas contra PostgreSQL real.
 
-A prioridade será cobertura de comportamento relevante, e não apenas porcentagem de cobertura.
+## Fase 4 — Fluxo transacional e idempotência
 
-## 10. Fase 9 — Hardening e Documentação Final
+### Entregas
 
-Antes da entrega:
+- caso de uso único para processamento financeiro;
+- `Idempotency-Key` e SHA-256 de JSON canônico;
+- resultado histórico persistido;
+- conflito quando a mesma chave recebe payload diferente;
+- Wallet, Wager, Ledger e Outbox na mesma transação;
+- criação de Wallet com `OPENING` e `CREDIT` atômicos.
 
-- revisar tratamento de erros;
-- remover complexidade acidental;
-- validar setup a partir de ambiente limpo;
-- revisar migrations;
-- validar testes de concorrência;
-- consolidar decisões arquiteturais;
-- atualizar README;
-- documentar trade-offs e possíveis melhorias.
+### Evidência
 
-## 11. Princípio de Desenvolvimento
+Replay idêntico não duplica efeitos; falhas provocam rollback; respostas repetidas preservam o saldo original.
 
-Cada etapa de implementação deve responder:
+## Fase 5 — Concorrência entre instâncias
+
+### Entregas
+
+- optimistic concurrency por versão da Wallet;
+- update SQL condicionado à versão esperada;
+- retry limitado a cinco tentativas;
+- constraints únicas para corridas de idempotência e reversão;
+- ausência de lock global.
+
+### Evidência
+
+- 50 submissões paralelas produzem um único efeito;
+- duas apostas de `80.00 BRL` contra `100.00 BRL` produzem um sucesso, uma rejeição e saldo `20.00 BRL`;
+- wallets distintas processam em paralelo;
+- três contextos Nest independentes compartilham o mesmo PostgreSQL.
+
+## Fase 6 — Inbox e consumidor SQS
+
+### Entregas
+
+- filas `wager-transactions.fifo` e DLQ;
+- contrato `WagerTransactionRequested`;
+- consumidor reutilizando o caso de uso HTTP;
+- Inbox persistente por `(consumerName, messageId)`;
+- ack somente depois do commit;
+- redelivery, limite de três recebimentos e DLQ;
+- shutdown gracioso.
+
+### Evidência
+
+Testes no LocalStack cobrem mensagem válida, duplicidade, conflito, redelivery e DLQ sem substituir o broker por mocks.
+
+## Fase 7 — Transactional Outbox
+
+### Entregas
+
+- eventos gravados junto da operação financeira;
+- filas `integration-events.fifo` e DLQ;
+- publisher com claim atômico, `FOR UPDATE SKIP LOCKED` e lease;
+- retry exponencial;
+- `MessageGroupId = aggregateId`;
+- `MessageDeduplicationId = eventId`;
+- recuperação após crash.
+
+### Evidência
+
+Testes de integração cobrem dois publishers concorrentes, lease expirado, publicação, retry e reinicialização.
+
+## Fase 8 — Referências fora de ordem
+
+### Entregas
+
+- `REFUND` e `ROLLBACK` sem origem persistidos como `PENDING_REFERENCE`;
+- worker com claim/lease;
+- backoff exponencial;
+- máximo de oito tentativas;
+- rejeição final estável com `REFERENCE_NOT_FOUND`;
+- eventos de pendência, processamento ou rejeição.
+
+### Evidência
+
+Teste E2E envia a reversão antes da referência e comprova reprocessamento e reconciliação final.
+
+## Fase 9 — HTTP, reconciliação e observabilidade
+
+### Entregas
+
+- endpoints de Wallet, ledger, Wager e consultas;
+- paginação com cursor opaco;
+- mapeamento consistente de status HTTP;
+- reconciliação sem correção silenciosa;
+- logs JSON com identificadores;
+- métricas Prometheus;
+- liveness e readiness separados;
+- `NoopAuthGuard` como ponto de extensão.
+
+### Evidência
+
+Testes HTTP validam contratos e erros; readiness verifica PostgreSQL e SQS reais.
+
+## Fase 10 — Hardening, testes e documentação
+
+### Entregas
+
+- revisão das migrations e constraints;
+- testes sequenciais de integração para isolamento;
+- scripts Bun de teste, cobertura, lint e build;
+- README de execução e contratos;
+- arquitetura, ADRs, requisitos e limitações atualizados.
+
+### Comandos finais
+
+```bash
+bun run test
+bun run test:e2e
+bun run test:cov
+bun run lint
+bun run build
+```
+
+## Resultado
+
+O escopo obrigatório foi concluído. Permanecem fora da entrega apenas diferenciais opcionais: ledger de partidas dobradas, OpenTelemetry/dashboard e teste de carga com processos separados.
+
+## Princípio adotado
+
+Cada fase respondeu a três perguntas:
 
 1. Qual problema este código resolve?
 2. Qual requisito ou invariante ele protege?
-3. Como podemos demonstrar que ele está correto?
-
-Código não deve ser introduzido apenas porque uma convenção de framework permite.
+3. Como a suíte demonstra que ele está correto?

@@ -1,120 +1,194 @@
-# Levantamento de Requisitos
+# Levantamento e Rastreabilidade de Requisitos
 
-## 1. Entendimento do Problema
+## 1. Objetivo
 
-O sistema deve processar operações financeiras relacionadas a transações de jogos de forma confiável, auditável e resistente a falhas.
+O sistema processa operações financeiras de apostas recebidas por HTTP e SQS, mantendo correção quando há duplicidade, concorrência, entrega fora de ordem, indisponibilidade temporária ou reinicialização.
 
-A principal complexidade do desafio não está em expor endpoints CRUD, mas em garantir correção quando múltiplas requisições, retentativas, mensagens assíncronas e operações concorrentes afetam o mesmo estado financeiro.
+A prioridade é garantir que o sistema nunca duplique débitos ou créditos, perca eventos confirmados, produza `lost update` ou permita saldo negativo.
 
-Por isso, a implementação deve priorizar:
+## 2. Stack obrigatória
 
-- consistência financeira;
-- idempotência;
-- controle de concorrência;
-- rastreabilidade por meio de ledger;
-- processamento assíncrono confiável;
-- recuperação de falhas parciais;
-- fronteiras de domínio bem definidas.
+| Requisito                                           | Atendimento                       |
+| --------------------------------------------------- | --------------------------------- |
+| Bun 1.x como runtime, package manager e test runner | Implementado                      |
+| TypeScript estrito e NestJS                         | Implementado                      |
+| PostgreSQL                                          | Implementado com imagem 17-alpine |
+| AWS SQS local                                       | Implementado com LocalStack       |
+| MikroORM ou TypeORM                                 | MikroORM 7                        |
+| Docker Compose                                      | PostgreSQL e LocalStack           |
+| Migrations versionadas e reversíveis                | Implementado                      |
 
-## 2. Requisitos Funcionais
+## 3. Requisitos funcionais
 
-O sistema deve suportar os principais fluxos exigidos pelo desafio, incluindo:
+### 3.1 Wallet
 
-- receber solicitações de transações financeiras ou relacionadas a jogos;
-- validar os dados de entrada;
-- identificar requisições repetidas;
-- aplicar alterações de saldo de forma consistente;
-- registrar cada movimentação financeira em um ledger;
-- publicar ou consumir eventos assíncronos quando necessário;
-- disponibilizar o resultado ou status da operação para clientes ou componentes downstream.
+- criar uma Wallet por `playerId + currency`;
+- aceitar saldo inicial não negativo;
+- criar `OPENING` e lançamento `CREDIT` quando o saldo inicial for positivo;
+- consultar Wallet por id;
+- listar ledger por cursor opaco e limite;
+- reconciliar saldo materializado com o ledger.
 
-Os contratos HTTP e detalhes exatos de cada fluxo serão refinados durante a implementação de acordo com a especificação oficial do desafio.
+### 3.2 Transações de aposta
 
-## 3. Requisitos Não Funcionais
+- processar `BET`, `WIN`, `LOSS`, `REFUND` e `ROLLBACK`;
+- impedir `OPENING` por HTTP ou SQS;
+- consultar por id interno;
+- consultar por `providerId + externalTransactionId`;
+- retornar status, saldo resultante e `failureCode`;
+- preservar o resultado histórico em replay.
 
-### 3.1 Consistência Financeira
+### 3.3 Idempotência
 
-Uma alteração de saldo não pode existir sem o lançamento correspondente no ledger.
+- exigir `Idempotency-Key` no HTTP;
+- receber `idempotencyKey` no contrato SQS;
+- persistir SHA-256 de JSON canônico dos campos de negócio;
+- retornar replay para chave e payload iguais;
+- retornar conflito para a mesma chave com payload diferente;
+- garantir unicidade no PostgreSQL.
 
-Da mesma forma, um lançamento no ledger que represente uma movimentação concluída deve corresponder à alteração financeira esperada.
+### 3.4 Referências e reversões
 
-Essa relação será tratada como uma invariante central do sistema.
+- `REFUND` referencia somente `BET`;
+- `ROLLBACK` referencia `BET`, `WIN` ou `REFUND`;
+- referência deve estar `PROCESSED`;
+- provider, player, wallet, moeda, rodada e valor devem coincidir;
+- reversão parcial não é suportada;
+- uma referência não pode ser revertida duas vezes pelo mesmo tipo;
+- reversão que deixaria saldo negativo deve ser rejeitada com código próprio;
+- referência ausente deve ficar em `PENDING_REFERENCE` e ser reprocessada.
 
-### 3.2 Idempotência
+### 3.5 Entrada e saída assíncronas
 
-A repetição da mesma operação lógica não pode produzir efeitos financeiros duplicados.
+- consumir `WagerTransactionRequested` de SQS FIFO;
+- reutilizar o mesmo caso de uso do HTTP;
+- deduplicar mensagens em Inbox persistente;
+- confirmar somente após commit;
+- permitir retry e redrive para DLQ;
+- gravar eventos de integração na transação financeira;
+- publicar Outbox com múltiplos publishers e recuperação após crash.
 
-A idempotência deve ser persistente e continuar funcionando após:
+### 3.6 Eventos mínimos
 
-- reinicialização da aplicação;
-- retentativas do cliente;
-- mensagens duplicadas;
-- falhas de rede.
+- `WagerTransactionProcessed`, inclusive para `LOSS`;
+- `WagerTransactionRejected`;
+- `WagerTransactionPendingReference`;
+- `WalletBalanceChanged`, somente quando o saldo muda.
 
-### 3.3 Segurança em Concorrência
+## 4. Requisitos não funcionais
 
-Operações concorrentes sobre a mesma conta ou recurso financeiro não podem gerar:
+### 4.1 Precisão monetária
 
-- lost updates;
-- saldos inválidos por condição de corrida;
-- débitos ou créditos duplicados;
-- divergência entre saldo e ledger.
+- dinheiro nunca usa `number`, `float` ou `double`;
+- entrada e saída usam string decimal com duas casas;
+- moeda faz parte do value object;
+- cálculos usam `decimal.js`;
+- persistência usa `numeric(20,2)`.
 
-A estratégia de concorrência deve ser explícita e validada por testes.
+### 4.2 Concorrência
 
-### 3.4 Auditabilidade
+- a unidade de concorrência é `walletId`;
+- não existe lock global;
+- optimistic locking impede `lost update`;
+- retries são limitados;
+- a solução funciona com três ou mais instâncias;
+- FIFO é otimização, não garantia final.
 
-As operações financeiras devem ser rastreáveis.
+### 4.3 Atomicidade e auditabilidade
 
-O ledger deve fornecer um histórico durável das movimentações financeiras e permitir investigação de inconsistências e falhas.
+- Wallet, Wager, Ledger, Inbox e Outbox confirmam atomicamente;
+- toda mudança de saldo possui um lançamento, e vice-versa;
+- ledger concluído é imutável;
+- constraints reforçam invariantes no schema;
+- reconciliação detecta e expõe divergências sem alterá-las.
 
-### 3.5 Recuperação de Falhas
+### 4.4 Recuperação de falhas
 
-O sistema deve tolerar falhas entre operações síncronas no banco e comunicação assíncrona.
+- redelivery não duplica efeitos;
+- commit antes da publicação é recuperável pelo Outbox;
+- leases expirados podem ser assumidos por outra instância;
+- publicação duplicada é aceita no contrato at-least-once;
+- shutdown interrompe novos polls e aguarda o trabalho corrente.
 
-A arquitetura deve evitar situações em que uma transação no banco seja confirmada e o evento correspondente seja perdido de forma definitiva.
+### 4.5 Observabilidade
 
-### 3.6 Testabilidade
+- logs estruturados em JSON;
+- identificadores de correlação, mensagem, transação, Wallet e provider;
+- ausência de payload financeiro completo nos logs;
+- métricas de status, duplicidade, retry, DLQ, lock, lag, latência e reconciliação;
+- liveness e readiness separados.
 
-Os comportamentos críticos do domínio devem ser testáveis sem depender diretamente da infraestrutura.
+## 5. Invariantes centrais
 
-A suíte de testes deve priorizar:
+1. O saldo da Wallet nunca é negativo.
+2. Toda alteração de saldo tem exatamente um lançamento correspondente no ledger.
+3. `LOSS` e transações rejeitadas não alteram saldo nem geram ledger.
+4. Um lançamento do ledger não pode ser atualizado ou removido.
+5. A mesma operação lógica não pode causar mais de um efeito financeiro.
+6. O replay retorna o resultado original, não o saldo atual.
+7. A mesma referência não pode ser revertida duas vezes pelo mesmo tipo.
+8. Nenhum evento financeiro é publicado antes do commit.
+9. `wallet.balance` deve ser igual ao saldo reconstruído pelo ledger.
+10. As garantias permanecem válidas com múltiplas instâncias.
 
-- invariantes de domínio;
-- comportamento transacional;
-- idempotência;
-- cenários de concorrência;
-- integração com PostgreSQL;
-- processamento assíncrono.
+## 6. Códigos estáveis de falha
 
-## 4. Invariantes Centrais
+| Código                                  | Classificação     |
+| --------------------------------------- | ----------------- |
+| `INSUFFICIENT_FUNDS`                    | regra de saldo    |
+| `REVERSAL_WOULD_CAUSE_NEGATIVE_BALANCE` | regra de reversão |
+| `REFERENCE_NOT_FOUND`                   | referência        |
+| `INVALID_REFERENCE_TYPE`                | referência        |
+| `REFERENCE_SCOPE_MISMATCH`              | referência        |
+| `REFERENCE_AMOUNT_MISMATCH`             | referência        |
+| `REFERENCE_ALREADY_REVERSED`            | referência        |
+| `REFERENCE_NOT_PROCESSED`               | referência        |
+| `CURRENCY_MISMATCH`                     | escopo monetário  |
+| `WALLET_NOT_FOUND`                      | Wallet            |
+| `WALLET_SCOPE_MISMATCH`                 | Wallet/player     |
+| `PERMANENT_INFRASTRUCTURE_FAILURE`      | infraestrutura    |
 
-As seguintes invariantes devem orientar a implementação:
+## 7. Critérios de aceitação e evidências
 
-1. Toda alteração de saldo concluída com sucesso possui um lançamento correspondente no ledger.
-2. Um lançamento financeiro concluído não pode ser aplicado mais de uma vez.
-3. A mesma chave de idempotência não pode produzir múltiplos efeitos financeiros.
-4. Um débito não pode deixar a conta em um estado inválido.
-5. Alteração de saldo e criação do lançamento no ledger pertencentes à mesma operação devem ser persistidas atomicamente.
-6. Retentativas assíncronas não podem alterar o resultado financeiro final.
-7. As regras de domínio não devem depender diretamente de HTTP, PostgreSQL, SQS ou APIs específicas de framework.
+| Critério do desafio                 | Evidência na solução                                              |
+| ----------------------------------- | ----------------------------------------------------------------- |
+| duas apostas de 80 contra saldo 100 | teste concorrente: um sucesso, uma rejeição, saldo 20 e um débito |
+| mesma aposta 50 vezes               | teste paralelo com um único débito                                |
+| wallets distintas em paralelo       | teste de paralelismo sem lock global                              |
+| três ou mais instâncias             | três contextos Nest independentes e PostgreSQL compartilhado      |
+| worker morto após commit            | Inbox/Outbox persistentes e teste de recuperação                  |
+| dois publishers concorrentes        | claim/lease e teste no PostgreSQL/LocalStack                      |
+| reversão antes da referência        | `PENDING_REFERENCE` e teste E2E                                   |
+| restart com consistência final      | teste de restart e reconciliação                                  |
+| PostgreSQL e SQS reais              | suíte E2E usa containers do Compose                               |
 
-## 5. Principais Riscos Técnicos
+## 8. Matriz de rastreabilidade
 
-A implementação deve tratar explicitamente os seguintes riscos:
+| Área              | Domínio/aplicação           | Persistência/infraestrutura | Testes                 |
+| ----------------- | --------------------------- | --------------------------- | ---------------------- |
+| dinheiro          | `Money`                     | `numeric(20,2)`             | Money e moeda          |
+| saldo             | `Wallet`                    | versão e checks             | Wallet e hot wallet    |
+| auditoria         | `WalletLedgerEntry`         | trigger e constraints       | ledger e reconciliação |
+| idempotência HTTP | caso de uso e hash canônico | unique indexes              | replay e corrida       |
+| idempotência SQS  | `InboxMessage`              | Inbox persistente           | redelivery             |
+| eventos           | Integration Events          | Outbox e SQS FIFO           | publisher e restart    |
+| referências       | `WagerTransaction`          | lease e próxima tentativa   | fora de ordem          |
+| operação          | métricas e health           | PostgreSQL e LocalStack     | HTTP e E2E             |
 
-- requisições duplicadas;
-- mensagens duplicadas na fila;
-- atualizações concorrentes de saldo;
-- falhas parciais no banco;
-- falha na publicação de mensagens;
-- leituras defasadas;
-- excesso de retentativas;
-- acoplamento indevido entre domínio e infraestrutura;
-- baixa rastreabilidade para investigar inconsistências financeiras.
+## 9. Decisões de escopo
 
-## 6. Critério Geral de Aceitação
+Autenticação não foi implementada, conforme permitido pelo desafio. Um `NoopAuthGuard` marca o ponto de extensão para OIDC.
 
-A implementação será considerada bem-sucedida quando demonstrar que o sistema permanece correto tanto em cenários normais quanto em condições realistas de falha.
+Ficam fora apenas diferenciais opcionais:
 
-Correção financeira terá prioridade sobre quantidade de funcionalidades.
+- ledger de partidas dobradas;
+- OpenTelemetry e dashboard;
+- teste de carga com processos separados.
+
+## 10. Critério final
+
+A entrega é aceita quando as migrations sobem, os serviços ficam prontos, as suítes unitária e E2E passam e a invariante abaixo permanece verdadeira após operações, duplicidades, concorrência e restart:
+
+```text
+wallet.balance == saldo reconstruído pelo ledger
+```

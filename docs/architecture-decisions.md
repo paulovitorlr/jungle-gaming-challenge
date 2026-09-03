@@ -1,598 +1,344 @@
-# Decisões Arquiteturais
+# Registro de Decisões Arquiteturais
 
-Este documento registra as principais decisões arquiteturais tomadas durante o desafio.
+Este documento registra as decisões efetivamente adotadas na implementação do desafio. Ele complementa a visão consolidada de [ARCHITECTURE.md](../ARCHITECTURE.md).
 
-O objetivo não é prever todo o design final antecipadamente, mas tornar escolhas técnicas importantes explícitas, revisáveis e defensáveis.
-
----
-
-## ADR-001 — Arquitetura Orientada ao Domínio
+## ADR-001 — DDD pragmático e arquitetura em camadas
 
 ### Status
 
-Aceita.
+Aceita e implementada.
 
 ### Contexto
 
-A principal complexidade do desafio está nas regras financeiras, consistência, idempotência, concorrência e processamento assíncrono.
-
-Organizar o projeto principalmente em torno de conceitos do framework, como controllers, services e modelos de ORM, dificultaria o isolamento e o raciocínio sobre essas regras.
+A dificuldade central está nas invariantes financeiras, idempotência, concorrência e recuperação de falhas, não em CRUD ou no framework.
 
 ### Decisão
 
-O sistema utilizará uma arquitetura orientada ao domínio, inspirada em Domain-Driven Design.
-
-As responsabilidades serão separadas em conceitos próximos de:
-
-- Domain;
-- Application;
-- Infrastructure;
-- Presentation.
-
-A estrutura exata de pastas poderá evoluir conforme fronteiras reais forem identificadas.
+O código foi organizado nos módulos `wallet`, `wagering` e `messaging`, com separação entre Domain, Application, Infrastructure e Presentation. O domínio não importa NestJS, MikroORM ou AWS. Casos de uso dependem de portas; a infraestrutura fornece adaptadores.
 
 ### Consequências
 
-Benefícios:
+- regras financeiras podem ser testadas sem infraestrutura;
+- entidades do ORM e contratos HTTP/SQS não contaminam o domínio;
+- há mais mappers, portas e composição explícita;
+- abstrações só são mantidas quando protegem uma fronteira real.
 
-- regras de domínio independentes do NestJS;
-- lógica de negócio testável sem infraestrutura;
-- persistência e mensageria tratadas como detalhes de implementação;
-- invariantes mais fáceis de localizar e defender.
-
-Trade-offs:
-
-- maior quantidade de abstrações explícitas;
-- custo inicial de design um pouco maior;
-- necessidade de evitar camadas e interfaces sem responsabilidade real.
-
----
-
-## ADR-002 — Arquitetura Orientada a Eventos
+## ADR-002 — `Money` decimal e imutável
 
 ### Status
 
-Aceita em princípio.
+Aceita e implementada.
 
 ### Contexto
 
-O desafio exige processamento assíncrono e comunicação baseada em filas.
-
-O estado financeiro precisa continuar correto mesmo com mensagens duplicadas, atrasadas, reenviadas ou temporariamente indisponíveis.
+`number`, `float` e `double` não oferecem a precisão exigida para dinheiro e são proibidos pelo desafio.
 
 ### Decisão
 
-Fluxos assíncronos serão modelados por eventos ou mensagens explícitos.
+`Money` encapsula `decimal.js`. Valores entram e saem como strings decimais, sempre com duas casas, acompanhados da moeda ISO-4217. O value object rejeita formato inválido, notação científica, excesso de casas e operações entre moedas diferentes. Soma, subtração e negação retornam novas instâncias.
 
-Será utilizada infraestrutura compatível com SQS como mecanismo de transporte, executada localmente por LocalStack, MiniStack ou alternativa compatível.
-
-O sistema assumirá entrega *at-least-once*. Duplicidade, reenvio e processamento após falha serão tratados como condições normais, não excepcionais.
-
-O comportamento orientado a eventos será introduzido somente após o fluxo financeiro síncrono subjacente estar correto.
+Na persistência, valor e moeda ocupam colunas separadas; o valor usa `numeric(20,2)`.
 
 ### Consequências
 
-- consumidores devem ser idempotentes;
-- a entrega de mensagens não será tratada como exatamente uma vez;
-- retry, DLQ e recuperação após crash precisarão ser projetados explicitamente;
-- a ordem global de mensagens não será usada como garantia de consistência financeira.
+- não há aritmética financeira binária de ponto flutuante;
+- conversões entre contratos, domínio e banco são explícitas;
+- `number` permanece restrito a versão, tentativas, duração, limite e métricas.
 
----
-
-## ADR-003 — PostgreSQL como Fonte de Verdade
+## ADR-003 — Wallet como Aggregate Root
 
 ### Status
 
-Aceita e implementada no recorte de wallet e ledger.
+Aceita e implementada.
 
 ### Contexto
 
-Correção financeira exige transações fortes, constraints, índices e mecanismos de controle de concorrência.
+Saldo, moeda, versão e lançamentos precisam evoluir juntos para impedir estados inválidos.
 
 ### Decisão
 
-PostgreSQL será a fonte durável principal de verdade para o estado financeiro.
+`Wallet` protege moeda, saldo não negativo, valores positivos e versionamento. `credit` e `debit` produzem o `WalletLedgerEntry` correspondente. `open` cria uma nova carteira; `rehydrate` apenas reconstrói estado persistido.
 
-No recorte já implementado, o banco armazena `Wallet` e `WalletLedgerEntry` por meio de migrations versionadas e reversíveis. As tabelas possuem foreign key, índices, unicidade e `CHECK constraints` para reforçar as invariantes que não podem depender somente do código da aplicação.
+A versão começa em 1 e só incrementa quando o saldo muda. `LOSS` e operações rejeitadas não incrementam a versão.
 
 ### Consequências
 
-- garantias importantes devem ser reforçadas tanto pela aplicação quanto pelo banco quando apropriado;
-- transações de banco definirão fronteiras atômicas para alterações financeiras relacionadas;
-- o schema rejeita saldo negativo, versão inválida, lançamento com valor não positivo e lançamento incompatível com os saldos anterior e posterior;
-- a foreign key impede que um lançamento do ledger exista sem uma wallet correspondente.
+- alterações financeiras legítimas passam pelo aggregate;
+- controllers e repositórios não implementam regras de saldo;
+- a aplicação persiste Wallet e ledger na mesma Unit of Work.
 
----
-
-## ADR-004 — Uso do MikroORM
+## ADR-004 — Ledger imutável e reconciliável
 
 ### Status
 
-Aceita e implementada no primeiro recorte persistente.
+Aceita e implementada.
 
 ### Contexto
 
-O desafio recomenda MikroORM, e o projeto precisa integrar PostgreSQL sem comprometer a arquitetura orientada ao domínio.
+Um saldo materializado isolado não explica como o valor atual foi alcançado.
 
 ### Decisão
 
-MikroORM será utilizado como camada de ORM/data mapper.
+Toda alteração de saldo cria exatamente um lançamento `CREDIT` ou `DEBIT`, com valor, saldo anterior e saldo posterior. `LOSS` e rejeições não geram lançamento. O banco impõe:
 
-As entidades de persistência são separadas das entidades de domínio. `WalletMapper` e `WalletLedgerMapper` realizam as conversões explicitamente, inclusive entre colunas `numeric(20, 2)` e o Value Object `Money`.
+- foreign key para a Wallet;
+- unicidade por `walletId + transactionId`;
+- valor positivo e saldos não negativos;
+- coerência matemática entre direção, valor e saldos;
+- trigger que impede `UPDATE` e `DELETE`.
 
-A configuração utiliza integração com NestJS, PostgreSQL, descoberta explícita das entidades e suporte a migrations pela CLI.
+A reconciliação soma o ledger desde zero e compara o resultado com `wallet.balance`. Divergências são retornadas, logadas e contabilizadas, nunca corrigidas silenciosamente.
 
 ### Consequências
 
-- mapeamentos de persistência não devem redefinir regras de domínio;
-- migrations deverão permanecer explícitas, versionadas e reversíveis;
-- entidades de domínio não devem depender do MikroORM para expressar suas invariantes;
-- repositórios não executam `flush()` isoladamente quando participam de uma operação financeira composta;
-- testes de integração usam o PostgreSQL real para validar o comportamento transacional.
+- o histórico financeiro é auditável;
+- corrupção ou regressão pode ser detectada;
+- não foi adotado ledger de partidas dobradas, que é diferencial opcional.
 
----
-
-## ADR-005 — Representação de Dinheiro
+## ADR-005 — PostgreSQL como fonte de verdade
 
 ### Status
 
-Aceita e implementada no domínio.
+Aceita e implementada.
 
 ### Contexto
 
-Números de ponto flutuante nativos do JavaScript não são adequados para operações financeiras em que determinismo e precisão são necessários.
-
-O desafio também estabelece que valores monetários não devem ser representados com `number`, `float` ou `double`.
+As garantias precisam sobreviver a restart e coordenar múltiplas instâncias.
 
 ### Decisão
 
-Valores monetários serão representados pelo Value Object `Money`.
-
-A API de criação recebe o valor como `string` decimal, e a aritmética interna utiliza `decimal.js`.
-
-Exemplo:
-
-```ts
-Money.from({
-  amount: '25.00',
-  currency: 'BRL',
-});
-```
-
-O `Money` é responsável por:
-
-- validar o formato decimal recebido;
-- rejeitar notação científica;
-- rejeitar valores com mais de duas casas decimais;
-- manter a moeda associada ao valor;
-- impedir operações entre moedas diferentes;
-- realizar soma, subtração e negação sem aritmética binária de ponto flutuante;
-- permanecer imutável durante as operações.
+PostgreSQL é a fonte durável de Wallet, Wager, Ledger, Inbox e Outbox. Constraints e índices reforçam saldo não negativo, moeda, unicidade de wallet, idempotência, referências e reversões. As migrations são versionadas e possuem `down`.
 
 ### Consequências
 
-Benefícios:
+- correção não depende de cache em memória;
+- o banco resolve disputas entre instâncias;
+- testes de integração usam PostgreSQL real.
 
-- precisão decimal explícita;
-- regras monetárias centralizadas;
-- redução do risco de erros decorrentes de ponto flutuante;
-- operações financeiras mais fáceis de testar e revisar.
-
-Trade-offs:
-
-- conversões entre banco, domínio e contratos HTTP precisam ser explícitas;
-- valores monetários não devem escapar do domínio como `number`.
-
----
-
-## ADR-006 — Idempotência Persistente
+## ADR-006 — MikroORM com modelos de persistência separados
 
 ### Status
 
-Aceita.
+Aceita e implementada.
 
 ### Contexto
 
-Clientes e brokers podem reenviar operações.
-
-Deduplicação apenas em memória é insuficiente porque se perde após reinicialização e não coordena múltiplas instâncias.
+O ORM recomendado precisa participar das transações sem definir o domínio.
 
 ### Decisão
 
-A idempotência será persistente.
-
-O endpoint de transações exigirá o header `Idempotency-Key`. A requisição será normalizada para JSON canônico e terá um `payloadHash` persistido.
-
-A `idempotencyKey` será persistida e protegida por constraint de unicidade no banco. Os identificadores do provedor e da transação externa também serão preservados para rastreabilidade e resolução de referências.
-
-Processar a mesma operação lógica múltiplas vezes deve resultar em apenas um efeito financeiro.
-
-O replay com a mesma chave e o mesmo payload deverá retornar o resultado anteriormente persistido. Reutilizar a chave com payload diferente deverá produzir conflito, sem novo efeito financeiro.
-
-O resultado observado no primeiro processamento, incluindo o saldo resultante, é persistido junto à `WagerTransaction` para permitir replays determinísticos sem consultar o saldo atual da wallet.
+MikroORM fornece EntityManager, Unit of Work, migrations e locks. Entidades ORM são separadas das entidades de domínio; mappers chamam factories `rehydrate`. Repositórios utilizam o EntityManager contextual e não concluem isoladamente uma operação financeira composta.
 
 ### Consequências
 
-- a idempotência passa a fazer parte do modelo de persistência e da estratégia transacional, não apenas de middleware;
+- o domínio permanece independente;
+- os mapeamentos são explícitos;
+- operações fora de uma request usam Unit of Work ou EntityManager contextual, evitando o EntityManager global.
 
-- o primeiro processamento precisa persistir dados suficientes para reproduzir a resposta original;
-
-- constraints de unicidade no PostgreSQL serão a garantia final contra duplicidade entre múltiplas instâncias;
-
-- replays não causam novo débito, crédito ou lançamento no ledger.
-
----
-
-## ADR-007 — Ledger como Trilha de Auditoria Financeira
+## ADR-007 — Unit of Work como fronteira transacional
 
 ### Status
 
-Aceita e implementada no domínio e na persistência da wallet.
+Aceita e implementada.
 
 ### Contexto
 
-Um saldo mutável isolado não explica como o estado financeiro atual foi alcançado.
-
-Além disso, alterar o saldo sem produzir um registro correspondente permitiria divergência entre o estado atual da carteira e seu histórico financeiro.
+Wallet, Wager, Ledger, Inbox e Outbox não podem ser confirmados parcialmente.
 
 ### Decisão
 
-Toda alteração relevante de saldo deverá produzir um lançamento imutável correspondente no ledger.
+A porta `UnitOfWork` delimita operações atômicas. `MikroOrmUnitOfWork` usa `EntityManager.transactional()`. O commit ocorre quando o callback termina; exceções causam rollback.
 
-No domínio, créditos e débitos da `Wallet` produzem um `WalletLedgerEntry`.
-
-Exemplo conceitual:
-
-```text
-Wallet.credit(100.00)
-        |
-        |-- balance: 0.00 -> 100.00
-        |
-        `-- WalletLedgerEntry
-                type: credit
-                amount: 100.00
-```
-
-A invariante adotada é:
-
-> Toda alteração de saldo deve possuir um lançamento correspondente no ledger.
-
-A alteração da `Wallet` e a persistência do `WalletLedgerEntry` compartilham a mesma fronteira transacional no PostgreSQL por meio de uma Unit of Work.
-
-O schema reforça a consistência do ledger com:
-
-- foreign key de `wallet_ledger_entries.wallet_id` para `wallets.id`;
-- unicidade de `walletId + transactionId`;
-- valor do lançamento obrigatoriamente maior que zero;
-- saldos anterior e posterior não negativos;
-- `CHECK` matemático para `CREDIT` e `DEBIT`;
-- índice por `walletId + createdAt + id`, preparado para paginação estável.
+Chamadas externas ao SQS nunca permanecem dentro da transação SQL.
 
 ### Consequências
 
-- o ledger passa a ser um mecanismo central de auditabilidade;
-- histórico financeiro concluído não deve ser apagado ou silenciosamente reescrito;
-- a camada de aplicação deve executar carteira e lançamento dentro da Unit of Work;
-- a infraestrutura não trata atualização de saldo e criação do ledger como commits independentes;
-- testes de integração comprovam commit conjunto e rollback SQL conjunto.
+- uma operação confirma todos os efeitos financeiros e registros de entrega juntos;
+- falhas não deixam saldo sem ledger ou evento confirmado sem Outbox;
+- publicação externa exige Transactional Outbox.
 
----
-
-## ADR-008 — Estratégia de Concorrência
+## ADR-008 — Idempotência persistente e replay histórico
 
 ### Status
 
-Aceita e parcialmente implementada; teste concorrente determinístico ainda pendente.
+Aceita e implementada.
 
 ### Contexto
 
-Duas ou mais requisições podem tentar alterar o mesmo saldo simultaneamente.
-
-Uma abordagem simples de leitura, modificação e escrita sem coordenação com o banco pode gerar `lost update` ou estados inválidos.
+HTTP e SQS podem reenviar a mesma operação, inclusive após restart e entre instâncias.
 
 ### Decisão
 
-A estratégia principal será optimistic concurrency baseada em versionamento da `Wallet`.
+O header HTTP `Idempotency-Key` é obrigatório; no SQS a chave fica em `data`. Um JSON canônico com chaves ordenadas é submetido a SHA-256. Header e metadados do envelope ficam fora do hash.
 
-Cada carteira possui um campo `version`:
+O banco protege:
 
-- inicia em `1`;
-- é incrementado somente quando o saldo é alterado com sucesso;
-- não é incrementado quando uma operação é rejeitada.
+- `(providerId, idempotencyKey)`, para replay e conflito;
+- `(providerId, externalTransactionId)`, para consulta e referências.
 
-Fluxo esperado:
+Mesmo hash retorna `transactionId`, status, `failureCode` e saldo resultante persistidos. Hash diferente com a mesma chave é conflito.
 
-```text
-Processo A lê Wallet version 5
-Processo B lê Wallet version 5
+### Consequências
 
-Processo A persiste a alteração -> version 6
-Processo B tenta persistir esperando version 5 -> conflito
-```
+- replay não movimenta novamente a Wallet nem o ledger;
+- a resposta repetida preserva o saldo observado no processamento original;
+- constraints resolvem corridas entre instâncias.
 
-A camada de persistência realiza atualização condicionada à versão esperada:
+## ADR-009 — Optimistic concurrency por Wallet
+
+### Status
+
+Aceita, implementada e validada.
+
+### Contexto
+
+Leitura seguida de escrita sem coordenação permitiria `lost update`.
+
+### Decisão
+
+A unidade de concorrência é `walletId`. O update usa versão esperada:
 
 ```sql
-UPDATE wallets
-SET balance = :balance,
+update wallets
+set balance = :balance,
     version = :nextVersion,
     updated_at = :updatedAt
-WHERE id = :walletId
-  AND version = :expectedVersion;
+where id = :walletId
+  and version = :expectedVersion;
 ```
 
-Uma linha afetada representa sucesso. Zero linhas afetadas representam conflito concorrente.
-
-O repositório e os dois resultados possíveis da atualização condicional já possuem testes unitários. A implementação final ainda será validada com teste de integração determinístico envolvendo concorrência real contra PostgreSQL.
-
-### Critérios de Validação
-
-A estratégia deve:
-
-- proteger invariantes financeiras;
-- impedir `lost update`;
-- se comportar de forma previsível sob contenção;
-- permanecer compreensível;
-- ser testável;
-- evitar distributed locking desnecessário.
+Zero linhas atualizadas significa conflito. O caso de uso reinicia a transação com estado fresco até cinco vezes; após o limite, reporta falha transitória.
 
 ### Consequências
 
-Benefícios:
+- não existe lock global;
+- wallets diferentes processam em paralelo;
+- hot wallets podem gerar retries limitados;
+- o cenário de duas apostas de `80.00 BRL` contra `100.00 BRL` termina com uma processada, uma rejeitada e saldo `20.00 BRL`.
 
-- ausência de lock distribuído no domínio;
-- conflitos concorrentes tornam-se explícitos;
-- a estratégia combina bem com o modelo de versão já existente na `Wallet`.
-
-Trade-offs:
-
-- conflitos precisarão ser tratados pela camada de aplicação;
-- sob alta contenção, algumas operações poderão precisar ser repetidas;
-- a garantia depende de atualização condicional correta no banco;
-- a estratégia só será considerada concluída após validar o cenário obrigatório de duas apostas simultâneas sobre a mesma wallet.
-
----
-
-## ADR-009 — Transactional Outbox
+## ADR-010 — Inbox persistente para entrada SQS
 
 ### Status
 
-Aceita em princípio; implementação pendente.
+Aceita, implementada e validada.
 
 ### Contexto
 
-Uma transação de banco e a publicação de uma mensagem normalmente não participam da mesma transação atômica.
-
-Publicar diretamente após o commit cria uma janela de falha na qual o estado foi persistido, mas o evento pode nunca ser enviado.
-
-### Direção Pretendida
-
-Para eventos cuja entrega seja necessária após uma operação financeira bem-sucedida, será adotada a estratégia de transactional outbox.
-
-O estado de negócio e o registro da outbox serão persistidos na mesma transação PostgreSQL, enquanto um processo separado publicará mensagens pendentes no SQS.
-
-### Consequências
-
-- a estratégia adiciona complexidade de persistência e processamento em background;
-- o banco e o broker não precisam participar de uma transação distribuída;
-- falhas de publicação não perdem o evento, que permanece pendente na outbox;
-- o publicador precisará de retry, marcação de entrega e recuperação após crash.
-
-A decisão será atualizada com detalhes operacionais após a implementação do publicador.
-
----
-
-## ADR-010 — Wallet como Aggregate Root
-
-### Status
-
-Aceita e implementada no domínio.
-
-### Contexto
-
-As principais invariantes financeiras estão relacionadas ao estado da carteira.
-
-Permitir que saldo, moeda, versionamento e criação de lançamentos fossem alterados diretamente por services, controllers ou repositórios espalharia regras críticas pelo sistema e facilitaria a criação de estados inválidos.
+SQS oferece entrega at-least-once; uma mensagem pode reaparecer após timeout ou crash.
 
 ### Decisão
 
-A `Wallet` será o Aggregate Root do contexto financeiro da carteira.
+O consumidor registra `InboxMessage` por `(consumerName, messageId)`, valida o hash e chama o mesmo caso de uso da API. Inbox, operação financeira, ledger e Outbox participam da mesma transação. O ack ocorre somente depois do commit.
 
-Ela é responsável por manter:
-
-- `WalletId`;
-- `playerId`;
-- `currency`;
-- `balance`;
-- `version`;
-- `createdAt`;
-- `updatedAt`.
-
-A `Wallet` protege as seguintes invariantes:
-
-- a moeda da operação deve ser a mesma moeda da carteira;
-- créditos e débitos devem possuir valor maior que zero;
-- o saldo não pode ficar negativo;
-- alterações de saldo incrementam a versão;
-- operações rejeitadas não alteram a versão;
-- alterações de saldo produzem um `WalletLedgerEntry`.
-
-Novas carteiras são criadas por:
-
-```ts
-Wallet.open(playerId, currency);
-```
-
-Entidades previamente persistidas são reconstruídas por:
-
-```ts
-Wallet.rehydrate(props);
-```
-
-`open()` representa uma transição real de domínio e aplica regras de criação.
-
-`rehydrate()` apenas recompõe um estado previamente persistido e evita tratar leitura do banco como uma nova operação de negócio.
+Rejeições de negócio são resultados terminais confirmados. Mensagens inválidas ou falhas transitórias não são removidas; a redrive policy as encaminha para DLQ após três recebimentos.
 
 ### Consequências
 
-Benefícios:
+- redelivery não duplica débito ou crédito;
+- restart não apaga a deduplicação;
+- mensagens conflitantes permanecem diagnosticáveis;
+- no shutdown, novos polls param e o processamento corrente é aguardado.
 
-- invariantes financeiras ficam concentradas em um único ponto;
-- controllers e use cases não precisam conhecer detalhes internos do saldo;
-- o domínio continua independente de NestJS, PostgreSQL e MikroORM;
-- testes unitários conseguem validar as regras sem infraestrutura.
-
-Trade-offs:
-
-- alterações financeiras legítimas precisam passar pela `Wallet`;
-- a camada de persistência deve respeitar o estado e o versionamento definidos pelo Aggregate Root;
-- casos de uso financeiros precisam ser executados dentro da Unit of Work para preservar a atomicidade já oferecida pela infraestrutura.
-
----
-
-## ADR-011 — Unit of Work como Fronteira Transacional
+## ADR-011 — Transactional Outbox e publicação at-least-once
 
 ### Status
 
-Aceita e implementada no recorte de wallet e ledger.
+Aceita, implementada e validada.
 
 ### Contexto
 
-Persistir a wallet e o lançamento do ledger em operações independentes permitiria saldo sem histórico ou histórico sem saldo.
-
-O mesmo problema será ampliado quando inbox, transação financeira e outbox precisarem participar da mesma operação SQL.
+Não há transação distribuída entre PostgreSQL e SQS. Publicar diretamente antes ou depois do commit pode expor evento não confirmado ou perder evento confirmado.
 
 ### Decisão
 
-A aplicação utilizará uma abstração `UnitOfWork` para delimitar operações atômicas.
+Eventos são gravados na Outbox na mesma transação financeira. Publishers concorrentes fazem claim curto com `FOR UPDATE SKIP LOCKED`, `lock_id` e `locked_until`; a chamada ao SQS ocorre fora da transação.
 
-```ts
-unitOfWork.execute(async () => {
-  const updated = await walletRepository.update(
-    wallet,
-    expectedVersion,
-  );
-
-  if (!updated) {
-    throw new Error('Wallet version conflict');
-  }
-
-  await walletLedgerRepository.add(entry);
-});
-```
-
-A implementação `MikroOrmUnitOfWork` utiliza `EntityManager.transactional()`.
-
-Os repositórios registram entidades ou executam comandos dentro do contexto transacional, mas não fazem `flush()` isolado para concluir parcialmente uma operação composta. O commit ocorre apenas quando o callback termina com sucesso; exceções provocam rollback.
-
-### Validação
-
-Testes de integração contra PostgreSQL real comprovam:
-
-- commit conjunto de wallet e ledger;
-- rollback conjunto após os `INSERTs` terem sido enviados ao banco;
-- ausência de `flush()` isolado nos repositórios.
+Sucesso preenche `published_at`; falha incrementa tentativas e agenda backoff exponencial. Lease expirado permite recuperação. Em SQS FIFO, `MessageGroupId = aggregateId` e `MessageDeduplicationId = eventId`.
 
 ### Consequências
 
-Benefícios:
+- commit antes da publicação é recuperável;
+- o sistema não publica evento financeiro ainda não confirmado;
+- crash após aceitação pelo SQS e antes de `published_at` pode duplicar o evento;
+- consumidores downstream devem deduplicar pelo `eventId`.
 
-- fronteira transacional explícita para os casos de uso;
-- infraestrutura reutilizável pelos futuros fluxos de inbox e outbox;
-- falhas não deixam efeitos financeiros parcialmente persistidos.
-
-Trade-offs:
-
-- casos de uso precisam respeitar a fronteira da Unit of Work;
-- operações externas, como publicação em SQS, não devem ocorrer dentro da transação SQL;
-- a entrega de mensagens continuará exigindo transactional outbox.
-
----
-
-## ADR-012 — Inbox Persistente para Consumo At-Least-Once
+## ADR-012 — Referências fora de ordem como estado de negócio
 
 ### Status
 
-Aceita em princípio; implementação pendente.
+Aceita, implementada e validada.
 
 ### Contexto
 
-O broker pode entregar a mesma mensagem mais de uma vez, reenviá-la após timeout ou entregá-la fora da ordem de negócio esperada.
-
-Deduplicar apenas em memória não funciona após reinicialização e não coordena múltiplas instâncias do consumidor.
+`REFUND` ou `ROLLBACK` pode chegar antes da transação referenciada.
 
 ### Decisão
 
-Mensagens consumidas serão registradas em uma inbox persistente antes de serem consideradas processadas.
-
-Inbox, transação financeira, wallet, ledger e outbox participarão da mesma transação SQL quando fizerem parte da mesma operação.
-
-Mensagens com referência de negócio ainda inexistente não serão descartadas. A transação ficará em estado `PENDING_REFERENCE` até que possa ser reprocessada de maneira segura.
+A operação é persistida como `PENDING_REFERENCE`. Um worker usa claim/lease e backoff exponencial para reprocessar sem manter transação aberta durante a espera. Após oito tentativas, termina em `REJECTED` com `REFERENCE_NOT_FOUND`.
 
 ### Consequências
 
-- duplicidades serão reconhecidas por dados persistidos;
-- ACK ao broker só deverá ocorrer após commit bem-sucedido;
-- falhas temporárias poderão usar retry com política explícita;
-- falhas não recuperáveis deverão ser encaminhadas para DLQ;
-- o consumidor precisará recuperar registros incompletos após crash.
+- mensagens fora de ordem não são descartadas;
+- o estado pendente permanece auditável;
+- outra instância recupera o trabalho após expiração do lease;
+- oito tentativas priorizam feedback rápido no desafio; em produção, o limite seria alinhado ao SLA dos provedores.
 
----
-
-## ADR-013 — Reconciliação entre Wallet e Ledger
+## ADR-013 — SQS FIFO como otimização, não garantia financeira
 
 ### Status
 
-Aceita em princípio; implementação pendente.
+Aceita e implementada.
 
 ### Contexto
 
-Mesmo com invariantes de domínio, constraints e transações, o sistema precisa detectar divergências causadas por bugs, alterações operacionais indevidas ou falhas futuras de implementação.
+Ordenação do broker não cobre entradas HTTP, redelivery, múltiplos consumidores nem disputas no banco.
 
 ### Decisão
 
-Será implementado um processo de reconciliação que reconstrói o saldo a partir dos lançamentos do ledger e compara o resultado com `wallet.balance`.
-
-```text
-saldo reconstruído = soma(CREDIT) - soma(DEBIT)
-```
-
-A invariante verificada será:
-
-```text
-wallet.balance == saldo reconstruído pelo ledger
-```
-
-Divergências deverão ser reportadas de forma explícita. A reconciliação não corrigirá silenciosamente dados financeiros.
+As filas são FIFO e agrupam mensagens por Wallet ou agregado. Contudo, idempotência, transações, optimistic locking e constraints do PostgreSQL continuam sendo as garantias de correção.
 
 ### Consequências
 
-- o ledger precisa permanecer imutável e consultável;
-- a consulta deve produzir resultado determinístico;
-- divergências tornam-se observáveis e auditáveis;
-- qualquer estratégia de correção exigirá decisão operacional separada.
+- ordenação reduz contenção e reordenação;
+- a aplicação continua correta sem depender de ordem global;
+- duplicidade continua sendo uma condição normal.
 
----
+## ADR-014 — Observabilidade operacional simples
 
-## Estado atual das decisões
+### Status
 
-As decisões deste documento possuem níveis diferentes de maturidade.
+Aceita e implementada.
 
-Atualmente:
+### Decisão
 
-- `Money`, `WalletId`, `WalletLedgerEntry` e `Wallet` já existem no domínio e possuem testes unitários;
-- representação monetária com `decimal.js` já está definida;
-- `Wallet` já utiliza versionamento de domínio;
-- saldo e ledger já são relacionados pelas operações de crédito e débito;
-- `Wallet` e `WalletLedgerEntry` possuem modelos e mappers de persistência separados do domínio;
-- PostgreSQL e MikroORM estão configurados com migration inicial versionada;
-- constraints do banco reforçam as principais invariantes de wallet e ledger;
-- Unit of Work, commit conjunto e rollback SQL conjunto foram validados por testes de integração;
-- a atualização otimista condicionada por versão está implementada no repositório e coberta por testes unitários;
-- ainda falta ligar a persistência aos casos de uso financeiros;
-- o teste concorrente real obrigatório ainda está pendente;
-- unicidade de wallet por `playerId + currency` e abertura com saldo inicial positivo, `OPENING` e `CREDIT` ainda precisam ser concluídas;
-- endpoints HTTP, cursor opaco do ledger e consultas de transação ainda estão pendentes;
-- idempotência persistente com `Idempotency-Key` e `payloadHash`, referências `PENDING_REFERENCE`, inbox, outbox, SQS, retry, DLQ, crash recovery e reconciliação ainda serão implementados.
+Logs operacionais são JSON com identificadores disponíveis e sem payload financeiro completo. Métricas em formato Prometheus cobrem status, duplicatas, retries, DLQ, conflitos, latência, lag do Outbox e reconciliação. Liveness verifica o processo; readiness verifica PostgreSQL e SQS.
 
-O documento deverá ser atualizado sempre que uma decisão inicialmente marcada como candidata ou aceita em princípio for confirmada, alterada ou descartada pela implementação.
+### Consequências
+
+- falhas distribuídas podem ser diagnosticadas localmente;
+- métricas são mantidas em memória por instância e reiniciam com o processo;
+- OpenTelemetry e dashboard permanecem evoluções opcionais.
+
+## ADR-015 — Autenticação fora do escopo avaliado
+
+### Status
+
+Aceita e implementada como ponto de extensão.
+
+### Decisão
+
+Foi aplicado um `NoopAuthGuard` aos endpoints de negócio. Health checks são públicos e SQS é tratado como canal interno. Em produção, o guard seria substituído por OIDC com Keycloak ou Zitadel e a identidade autenticada seria comparada ao `providerId`.
+
+### Consequências
+
+- o timebox permanece concentrado na correção financeira;
+- não há autenticação artesanal;
+- o ponto de substituição está explícito no código.
+
+## Limitações conscientes
+
+- não há ledger de partidas dobradas;
+- métricas não são duráveis nem agregadas entre processos;
+- paginação do ledger é estável, mas ainda filtra em memória;
+- o teste de três instâncias usa contextos Nest independentes no mesmo processo;
+- não há OpenTelemetry, dashboard ou teste de carga, todos opcionais.
