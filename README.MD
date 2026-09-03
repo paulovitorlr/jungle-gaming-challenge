@@ -63,7 +63,7 @@ bunx mikro-orm migration:up
 bun run start:dev
 ```
 
-O `--force-recreate` faz o LocalStack executar novamente o script idempotente que configura as quatro filas FIFO e suas redrive policies. A API fica disponível em `http://localhost:3000`.
+Esse fluxo sobe somente a infraestrutura compartilhada — PostgreSQL e LocalStack — e executa a aplicação localmente com Bun. O `--force-recreate` faz o LocalStack executar novamente o script idempotente que configura as quatro filas FIFO e suas redrive policies. A API fica disponível em `http://localhost:3000`.
 
 Verifique as dependências:
 
@@ -98,7 +98,52 @@ docker compose down -v
 
 Esse último comando apaga os dados locais do banco.
 
-### Produção local
+### Stack distribuída com Docker
+
+Para subir a aplicação completa, incluindo migrations, três réplicas da API/workers e o gateway nginx:
+
+```bash
+docker compose --profile app up -d --build
+```
+
+Esse profile sobe:
+
+- PostgreSQL compartilhado;
+- LocalStack/SQS compartilhado;
+- um serviço `migrate` one-shot, que aplica as migrations e encerra com sucesso;
+- três réplicas independentes do serviço `app`;
+- um gateway nginx exposto em `http://localhost:3000`.
+
+Dentro da rede Docker, as réplicas usam `postgres` e `localstack` como hosts internos. Apenas o gateway publica a porta `3000` no host.
+
+Verifique a stack:
+
+```bash
+curl http://localhost:3000/health/ready
+docker compose --profile app ps
+```
+
+Resposta esperada do readiness:
+
+```json
+{ "status": "ok", "postgres": "up", "sqs": "up" }
+```
+
+O nginx distribui as requisições entre as réplicas por round-robin. Como o estado compartilhado fica no PostgreSQL e no SQS, as instâncias não dependem de memória local para correção.
+
+Para aumentar horizontalmente o número de réplicas:
+
+```bash
+docker compose --profile app up -d --scale app=5
+```
+
+Para encerrar a stack completa:
+
+```bash
+docker compose --profile app down
+```
+
+### Produção local sem Docker
 
 ```bash
 bun run build
@@ -306,6 +351,8 @@ Referências ausentes ficam em `PENDING_REFERENCE`. O worker usa claim/lease e b
 
 A unidade de concorrência é `walletId`; não há lock global.
 
+A Wallet usa **optimistic locking** por versão. O update financeiro é condicionado à versão lida (`WHERE id = ? AND version = ?`); em caso de conflito, a transação é refeita com estado novo até o limite configurado. `FOR UPDATE SKIP LOCKED` não é usado para proteger o saldo da Wallet: ele é reservado para claims concorrentes de Outbox e referências pendentes.
+
 - a Wallet começa em `version = 1` e incrementa apenas quando o saldo muda;
 - updates usam `WHERE id = ? AND version = ?`;
 - conflito otimista reinicia a transação com estado novo, até cinco tentativas;
@@ -403,10 +450,19 @@ Com PostgreSQL e LocalStack ativos e as migrations aplicadas:
 ```bash
 bun run test
 bun run test:e2e
+bun run test:concurrency
 bun run test:cov
 bun run lint
 bun run build
 ```
+
+O teste dedicado de concorrência executa:
+
+```bash
+bun test test/concurrency --timeout 60000
+```
+
+Ele compila a aplicação e inicia três processos Bun/Nest independentes, cada um com seu próprio PID, runtime, contexto NestJS, MikroORM e pool de conexões, todos compartilhando o mesmo PostgreSQL.
 
 O runner é o Bun. Os arquivos E2E seguem o padrão `*.e2e.spec.ts` reconhecido por `bun test`, e o script executa a suíte de integração sequencialmente entre arquivos.
 
@@ -418,9 +474,11 @@ Cobertura relevante:
 - replay idempotente histórico e chave com payload divergente;
 - constraints e rollback atômico no PostgreSQL real;
 - 50 submissões paralelas da mesma aposta;
-- duas apostas de `80.00` contra saldo `100.00`;
-- wallets distintas em paralelo;
-- três contextos Nest independentes sobre o mesmo banco;
+- duas apostas concorrentes de `80.00` contra saldo `100.00`, com exatamente uma processada;
+- saldo final `20.00` e exatamente um débito no ledger;
+- reconciliação consistente após a corrida;
+- wallets distintas processadas em paralelo;
+- três processos Bun/Nest independentes sobre o mesmo PostgreSQL;
 - Inbox, redelivery e DLQ no LocalStack;
 - publishers concorrentes, leases e retry do Outbox;
 - referência entregue antes da operação original;
@@ -438,7 +496,10 @@ src/
 ├── shared/           # Money, UnitOfWork, observabilidade e HTTP
 └── migrations/       # schema, constraints, índices e trigger
 test/
-└── integration/      # PostgreSQL e LocalStack reais
+├── integration/      # PostgreSQL e LocalStack reais
+└── concurrency/      # prova multiprocesso sobre o mesmo PostgreSQL
+docker/
+└── nginx/            # gateway e balanceamento round-robin
 ```
 
 ## Decisões e limitações
@@ -454,4 +515,4 @@ test/
 - reconciliação, observabilidade e autenticação;
 - limitações conscientes e evoluções para produção.
 
-Os diferenciais opcionais não implementados são ledger de partidas dobradas, OpenTelemetry/dashboard e teste de carga com processos separados. Eles não fazem parte do escopo obrigatório do desafio.
+Os diferenciais opcionais não implementados são ledger de partidas dobradas, OpenTelemetry/dashboard e um teste de carga dedicado. A concorrência multiprocesso entre instâncias independentes já é coberta por `test:concurrency`.
