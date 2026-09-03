@@ -2,7 +2,7 @@
 
 Serviço financeiro distribuído desenvolvido para o desafio técnico da Jungle Gaming. A aplicação processa transações de apostas recebidas por HTTP e SQS com precisão monetária, idempotência persistente, consistência entre saldo e ledger, concorrência entre múltiplas instâncias e publicação de eventos **at-least-once**.
 
-As decisões de arquitetura, garantias, trade-offs e limitações estão detalhadas em [ARCHITECTURE.md](./ARCHITECTURE.md).
+As decisões de arquitetura, garantias, trade-offs e limitações estão detalhadas em [ARCHITECTURE.md](./docs/architecture-decisions.md).
 
 ## Estado da entrega
 
@@ -443,7 +443,7 @@ test/
 
 ## Decisões e limitações
 
-[ARCHITECTURE.md](./ARCHITECTURE.md) documenta:
+[ARCHITECTURE.md](./docs/architecture-decisions.md) documenta:
 
 - boundaries e dependências entre as camadas;
 - representação de dinheiro;
