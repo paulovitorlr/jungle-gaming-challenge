@@ -19,7 +19,9 @@
     "test:watch": "bun test --watch src",
     "test:cov": "bun test --coverage src",
     "test:debug": "bun --inspect-brk test src",
-    "test:e2e": "bun test test --timeout 30000 --max-concurrency 1"
+    "test:e2e": "bun test test --timeout 30000 --max-concurrency 1",
+    "migrate:up": "bun dist/migrate.js",
+    "test:concurrency": "bun test test/concurrency --timeout 60000"
   },
   "dependencies": {
     "@aws-sdk/client-sqs": "^3.1125.0",

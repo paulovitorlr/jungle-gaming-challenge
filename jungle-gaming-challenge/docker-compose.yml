@@ -1,20 +1,24 @@
 services:
   postgres:
     image: postgres:17-alpine
-    container_name: jungle-gaming-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: jungle_gaming
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d jungle_gaming']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
 
   localstack:
     image: localstack/localstack:4.13.0
-    container_name: jungle-gaming-localstack
     restart: unless-stopped
     environment:
       SERVICES: sqs
@@ -22,7 +26,7 @@ services:
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
     ports:
-      - '4566:4566'
+      - '127.0.0.1:4566:4566'
     volumes:
       - './docker/localstack/init-sqs.sh:/etc/localstack/init/ready.d/init-sqs.sh:ro'
     healthcheck:
@@ -35,6 +39,96 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
+
+  migrate:
+    profiles: ['app']
+    build:
+      context: .
+      target: runtime
+    command: ['bun', 'dist/migrate.js']
+    environment: &app-environment
+      APP_PORT: 3000
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: jungle_gaming
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      SQS_ENDPOINT: http://localstack:4566
+      SQS_WAGER_QUEUE_NAME: wager-transactions.fifo
+      SQS_WAGER_DLQ_NAME: wager-transactions-dlq.fifo
+      SQS_EVENTS_QUEUE_NAME: integration-events.fifo
+      SQS_EVENTS_DLQ_NAME: integration-events-dlq.fifo
+      SQS_WAGER_CONSUMER_ENABLED: 'false'
+      OUTBOX_PUBLISHER_ENABLED: 'false'
+      PENDING_REFERENCE_WORKER_ENABLED: 'false'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    restart: 'no'
+
+  app:
+    profiles: ['app']
+    build:
+      context: .
+      target: runtime
+    environment:
+      <<: *app-environment
+      SQS_WAGER_CONSUMER_ENABLED: 'true'
+      OUTBOX_PUBLISHER_ENABLED: 'true'
+      OUTBOX_BATCH_SIZE: 10
+      OUTBOX_LEASE_DURATION_MS: 60000
+      OUTBOX_POLL_INTERVAL_MS: 1000
+      PENDING_REFERENCE_WORKER_ENABLED: 'true'
+      PENDING_REFERENCE_BATCH_SIZE: 10
+      PENDING_REFERENCE_LEASE_DURATION_MS: 60000
+      PENDING_REFERENCE_POLL_MS: 1000
+    expose:
+      - '3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'bun',
+          '-e',
+          "const r = await fetch('http://127.0.0.1:3000/health/ready'); if (!r.ok) process.exit(1)",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    deploy:
+      replicas: 3
+    restart: unless-stopped
+
+  gateway:
+    profiles: ['app']
+    image: nginx:1.29-alpine
+    ports:
+      - '3000:3000'
+    volumes:
+      - './docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro'
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:3000/health/live >/dev/null 2>&1']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
 
 volumes:
   postgres_data:

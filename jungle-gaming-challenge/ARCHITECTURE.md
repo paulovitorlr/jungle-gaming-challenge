@@ -33,11 +33,19 @@ Nada é publicado no broker antes do commit. Constraints PostgreSQL reforçam sa
 
 ## Concorrência
 
-A unidade de disputa é `walletId`; não existe lock global. A Wallet inicia em versão 1 e incrementa somente quando o saldo muda. O update usa `WHERE id = ? AND version = ?`; zero linhas significa conflito otimista. O caso de uso reinicia a transação com estado fresco até 5 vezes. Depois disso reporta falha transitória.
+A unidade de disputa é `walletId`; não existe lock global. A Wallet usa **optimistic locking**: inicia em versão 1 e incrementa somente quando o saldo muda. O update usa `WHERE id = ? AND version = ?`; zero linhas significa conflito otimista. O caso de uso reinicia a transação com estado fresco até 5 vezes. Depois disso reporta falha transitória. Não usamos `SELECT ... FOR UPDATE` nem lock pessimista para proteger saldo da Wallet.
 
 Isso preserva paralelismo entre wallets e resolve a hot wallet sem lost update. No cenário de duas apostas de `80.00` contra `100.00`, uma confirma; a outra reabre o estado com saldo `20.00` e é rejeitada sem ledger. Constraints únicas resolvem também corridas de idempotência e reversão; o perdedor consulta e devolve o resultado persistido.
 
 SQS FIFO usa a wallet/aggregate como `MessageGroupId`. Isso reduz reordenação, mas não é fonte de correção: entradas HTTP, redelivery, múltiplos consumidores e referências fora de ordem continuam seguras pelo banco.
+
+`FOR UPDATE SKIP LOCKED` é reservado aos fluxos de **claim de trabalho**: Outbox e referências pendentes. Nesses casos ele permite que workers diferentes reivindiquem linhas distintas sem bloquear uns aos outros; ele não participa da proteção do saldo da Wallet.
+
+## Execução distribuída local
+
+A imagem da aplicação é multi-stage (`deps`, `build`, `runtime`). O estágio final contém o `dist`, Bun e apenas dependências de produção. Migrations são executadas pelo artefato compilado em um container one-shot antes das réplicas da aplicação.
+
+No Compose, PostgreSQL e LocalStack são serviços compartilhados. O profile `app` sobe três réplicas do mesmo serviço `app`; cada réplica contém API e workers e possui processo, heap e pool de conexões próprios. Um nginx exposto em `:3000` faz round-robin sobre o DNS interno `app`. Escalar para mais réplicas não altera a estratégia de correção, pois optimistic locking, Inbox, Outbox e constraints residem no PostgreSQL, e a fila é compartilhada.
 
 ## Idempotência e replay
 
@@ -95,9 +103,9 @@ Em produção, o guard seria substituído por OIDC com Keycloak/Zitadel. O token
 - Não há ledger de partidas dobradas; não é requisito obrigatório.
 - Métricas não sobrevivem a restart e não são agregadas entre processos.
 - O endpoint de ledger usa cursor opaco e ordenação estável, mas a consulta poderia ser otimizada para seek pagination diretamente no SQL em volumes altos.
-- Os testes de três instâncias criam três contextos Nest independentes no mesmo processo. Eles usam pools/EntityManagers separados e o mesmo PostgreSQL real; um teste de carga com três processos do sistema operacional seria a evolução natural.
+- A suíte mantém um teste de múltiplos contextos Nest no mesmo processo como cobertura de integração, mas a prova dedicada de concorrência agora sobe três processos Bun/Nest independentes, com heaps, runtimes e pools ORM separados, compartilhando somente PostgreSQL/LocalStack.
 - Não há OpenTelemetry nem dashboard, ambos opcionais.
 
 ## Estratégia de testes
 
-Testes unitários usam o runner nativo do Bun. Integração/E2E usa PostgreSQL e LocalStack reais do Compose, sem substituir as garantias distribuídas por mocks. A suíte cobre constraints e migrations, rollback atômico, Inbox/redelivery/DLQ, Outbox com publishers concorrentes e lease, 50 duplicatas simultâneas, disputa de saldo, wallets paralelas, referência anterior à origem e reconciliação final.
+Testes unitários usam o runner nativo do Bun. Integração/E2E usa PostgreSQL e LocalStack reais do Compose, sem substituir as garantias distribuídas por mocks. A suíte cobre constraints e migrations, rollback atômico, Inbox/redelivery/DLQ, Outbox com publishers concorrentes e lease, 50 duplicatas simultâneas, disputa de saldo, wallets paralelas, referência anterior à origem e reconciliação final. `bun run test:concurrency` complementa essa suíte com três processos do sistema operacional: duas instâncias disputam `80.00` sobre a mesma Wallet de `100.00`, enquanto a terceira consulta/reconcilia o estado compartilhado; outro cenário prova paralelismo entre wallets distintas.

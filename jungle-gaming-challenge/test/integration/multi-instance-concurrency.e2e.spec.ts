@@ -14,7 +14,7 @@ import { ReconcileWalletUseCase } from '../../src/modules/wallet/application/use
 import { ProcessWagerTransactionUseCase } from '../../src/modules/wagering/application/use-cases/process-wager-transaction.use-case.js';
 import { WagerTransactionKind } from '../../src/modules/wagering/domain/enums/wager-transaction-kind.enum.js';
 
-describe('Three application instances', () => {
+describe('Three application contexts in one process', () => {
   const modules: TestingModule[] = [];
 
   beforeAll(async () => {
