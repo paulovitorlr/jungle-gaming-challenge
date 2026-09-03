@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 
 import { Money } from '../../../../shared/domain/value-objects/money.vo.js';
 import { WalletId } from '../../../../shared/domain/value-objects/wallet-id.vo.js';

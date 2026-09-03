@@ -1,6 +1,6 @@
 import { Decimal } from 'decimal.js';
 
-type MoneyProps = {
+export type MoneyProps = {
   amount: string;
   currency: string;
 };
@@ -75,6 +75,13 @@ export class Money {
 
   isZero(): boolean {
     return this.amount.isZero();
+  }
+
+  toJSON(): MoneyProps {
+    return {
+      amount: this.toString(),
+      currency: this.currency,
+    };
   }
 
   toString(): string {

@@ -10,7 +10,6 @@ import {
 import { Test, TestingModule } from '@nestjs/testing';
 
 import {
-  EntityManager,
   MikroORM,
 } from '@mikro-orm/postgresql';
 
@@ -49,13 +48,16 @@ import { WalletLedgerOrmEntity } from '../../src/modules/wallet/infrastructure/p
 
 import { WagerTransactionOrmEntity } from '../../src/modules/wagering/infrastructure/persistence/mikro-orm/entities/wager-transaction.orm-entity.js';
 
+import { OutboxMessageRepository } from '../../src/modules/messaging/domain/repositories/outbox-message.repository.js';
+
+import { OutboxMessageOrmEntity } from '../../src/modules/messaging/infrastructure/persistence/mikro-orm/entities/outbox-message.orm-entity.js';
+
 describe(
   'Wager idempotency concurrency',
   () => {
     let moduleRef: TestingModule;
 
     let orm: MikroORM;
-    let entityManager: EntityManager;
 
     let unitOfWork: UnitOfWork;
 
@@ -66,6 +68,9 @@ describe(
 
     let wagerTransactionRepository:
       WagerTransactionRepository;
+
+    let outboxRepository:
+      OutboxMessageRepository;
 
     let useCase:
       ProcessWagerTransactionUseCase;
@@ -79,8 +84,6 @@ describe(
       await moduleRef.init();
 
       orm = moduleRef.get(MikroORM);
-
-      entityManager = orm.em.fork();
 
       unitOfWork = moduleRef.get(
         UNIT_OF_WORK,
@@ -100,17 +103,27 @@ describe(
           WagerTransactionRepository,
         );
 
+      outboxRepository = moduleRef.get(
+        OutboxMessageRepository,
+      );
+
       useCase =
         new ProcessWagerTransactionUseCase(
           walletRepository,
           walletLedgerRepository,
           wagerTransactionRepository,
           unitOfWork,
+          outboxRepository,
         );
     });
 
     beforeEach(async () => {
       const em = orm.em.fork();
+
+      await em.nativeDelete(
+        OutboxMessageOrmEntity,
+        {},
+      );
 
       await em.nativeDelete(
         WalletLedgerOrmEntity,
@@ -285,6 +298,24 @@ describe(
           ledgerEntries,
         ).toHaveLength(1);
 
+        const outboxMessages =
+          await verificationEm.find(
+            OutboxMessageOrmEntity,
+            {},
+          );
+
+        expect(outboxMessages)
+          .toHaveLength(2);
+
+        expect(
+          outboxMessages
+            .map((message) => message.eventType)
+            .sort(),
+        ).toEqual([
+          'WagerTransactionProcessed',
+          'WalletBalanceChanged',
+        ]);
+
         expect(
           first.transactionId,
         ).toBe(
@@ -405,6 +436,24 @@ describe(
           );
 
         expect(ledgerEntries).toHaveLength(1);
+
+        const outboxMessages =
+          await verificationEm.find(
+            OutboxMessageOrmEntity,
+            {},
+          );
+
+        expect(outboxMessages)
+          .toHaveLength(2);
+
+        expect(
+          outboxMessages
+            .map((message) => message.eventType)
+            .sort(),
+        ).toEqual([
+          'WagerTransactionProcessed',
+          'WalletBalanceChanged',
+        ]);
       },
     );
 
@@ -547,6 +596,25 @@ describe(
         expect(
           ledgerEntries[0]?.direction,
         ).toBe('DEBIT');
+
+        const outboxMessages =
+          await verificationEm.find(
+            OutboxMessageOrmEntity,
+            {},
+          );
+
+        expect(outboxMessages)
+          .toHaveLength(3);
+
+        expect(
+          outboxMessages
+            .map((message) => message.eventType)
+            .sort(),
+        ).toEqual([
+          'WagerTransactionProcessed',
+          'WagerTransactionRejected',
+          'WalletBalanceChanged',
+        ]);
       },
     );
   },

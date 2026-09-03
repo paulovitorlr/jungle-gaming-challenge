@@ -89,26 +89,38 @@ describe('Money', () => {
   });
 
   it('should identify a positive amount', () => {
-  const money = Money.from({
-    amount: '10.00',
-    currency: 'BRL',
+    const money = Money.from({
+      amount: '10.00',
+      currency: 'BRL',
+    });
+
+    expect(money.isPositive()).toBe(true);
   });
 
-  expect(money.isPositive()).toBe(true);
-});
+  it('should not identify zero as positive', () => {
+    const money = Money.zero('BRL');
 
-it('should not identify zero as positive', () => {
-  const money = Money.zero('BRL');
-
-  expect(money.isPositive()).toBe(false);
-});
-
-it('should not identify a negative amount as positive', () => {
-  const money = Money.from({
-    amount: '-10.00',
-    currency: 'BRL',
+    expect(money.isPositive()).toBe(false);
   });
 
-  expect(money.isPositive()).toBe(false);
-});
+  it('should not identify a negative amount as positive', () => {
+    const money = Money.from({
+      amount: '-10.00',
+      currency: 'BRL',
+    });
+
+    expect(money.isPositive()).toBe(false);
+  });
+
+  it('should serialize money as decimal string', () => {
+    const money = Money.from({
+      amount: '25',
+      currency: 'BRL',
+    });
+
+    expect(money.toJSON()).toEqual({
+      amount: '25.00',
+      currency: 'BRL',
+    });
+  });
 });

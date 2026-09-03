@@ -3,7 +3,8 @@ import { MikroOrmModule } from '@mikro-orm/nestjs';
 
 import { WagerTransactionRepository } from '../../domain/repositories/wager-transaction.repository.js';
 
-import { WagerTransactionOrmEntity } from './mikro-orm/entities/wager-transaction.orm-entity.js'; 
+import { WagerTransactionOrmEntity } from './mikro-orm/entities/wager-transaction.orm-entity.js';
+
 import { MikroOrmWagerTransactionRepository } from './mikro-orm/repositories/mikro-orm-wager-transaction.repository.js';
 
 @Module({
@@ -15,8 +16,11 @@ import { MikroOrmWagerTransactionRepository } from './mikro-orm/repositories/mik
 
   providers: [
     {
-      provide: WagerTransactionRepository,
-      useClass: MikroOrmWagerTransactionRepository,
+      provide:
+        WagerTransactionRepository,
+
+      useClass:
+        MikroOrmWagerTransactionRepository,
     },
   ],
 

@@ -113,6 +113,182 @@
       "comment": null
     },
     {
+      "name": "outbox_messages",
+      "schema": "public",
+      "columns": {
+        "aggregate_id": {
+          "name": "aggregate_id",
+          "type": "varchar(100)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": 100,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "int",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "0",
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "integer"
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "varchar(100)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": 100,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "id": {
+          "name": "id",
+          "type": "varchar(100)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": true,
+          "nullable": false,
+          "unique": false,
+          "length": 100,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "timestamptz(6)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "datetime"
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamptz(6)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "datetime"
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "json"
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "timestamptz(6)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "datetime"
+        }
+      },
+      "indexes": [
+        {
+          "columnNames": [
+            "published_at",
+            "next_attempt_at",
+            "occurred_at"
+          ],
+          "composite": true,
+          "constraint": false,
+          "keyName": "outbox_messages_pending_index",
+          "primary": false,
+          "unique": false
+        },
+        {
+          "columnNames": [
+            "id"
+          ],
+          "composite": false,
+          "constraint": true,
+          "keyName": "outbox_messages_pkey",
+          "primary": true,
+          "unique": true
+        }
+      ],
+      "checks": [
+        {
+          "name": "outbox_messages_attempts_non_negative_check",
+          "expression": "attempts >= 0",
+          "definition": "check (attempts >= 0)"
+        }
+      ],
+      "triggers": [],
+      "foreignKeys": {},
+      "comment": null
+    },
+    {
       "name": "wager_transactions",
       "schema": "public",
       "columns": {
@@ -470,9 +646,8 @@
       "checks": [
         {
           "name": "wager_transactions_amount_positive_check",
-          "expression": "amount > 0",
-          "definition": "CHECK ((amount > (0)::numeric))",
-          "columnName": "amount"
+          "expression": "\"amount\" > 0",
+          "definition": "check (\"amount\" > 0)"
         }
       ],
       "triggers": [],
@@ -693,20 +868,17 @@
         {
           "name": "wallet_ledger_amount_positive_check",
           "expression": "amount > 0",
-          "definition": "CHECK ((amount > (0)::numeric))",
-          "columnName": "amount"
+          "definition": "check (amount > 0)"
         },
         {
           "name": "wallet_ledger_balanced_check",
-          "expression": "((direction = 'CREDIT'::text) AND (balance_after = (balance_before + amount))) OR ((direction = 'DEBIT'::text) AND (balance_after = (balance_before - amount)))",
-          "definition": "CHECK ((((direction = 'CREDIT'::text) AND (balance_after = (balance_before + amount))) OR ((direction = 'DEBIT'::text) AND (balance_after = (balance_before - amount)))))",
-          "columnName": "amount"
+          "expression": "\n    (\n      (\n        direction = 'CREDIT'\n        AND balance_after = balance_before + amount\n      )\n      OR\n      (\n        direction = 'DEBIT'\n        AND balance_after = balance_before - amount\n      )\n    )\n  ",
+          "definition": "check (\n    (\n      (\n        direction = 'CREDIT'\n        AND balance_after = balance_before + amount\n      )\n      OR\n      (\n        direction = 'DEBIT'\n        AND balance_after = balance_before - amount\n      )\n    )\n  )"
         },
         {
           "name": "wallet_ledger_balances_non_negative_check",
-          "expression": "(balance_before >= 0) AND (balance_after >= 0)",
-          "definition": "CHECK (((balance_before >= (0)::numeric) AND (balance_after >= (0)::numeric)))",
-          "columnName": "balance_after"
+          "expression": "balance_before >= 0 AND balance_after >= 0",
+          "definition": "check (balance_before >= 0 AND balance_after >= 0)"
         },
         {
           "name": "wallet_ledger_entries_direction_check",
@@ -883,14 +1055,12 @@
         {
           "name": "wallets_balance_non_negative_check",
           "expression": "balance >= 0",
-          "definition": "CHECK ((balance >= (0)::numeric))",
-          "columnName": "balance"
+          "definition": "check (balance >= 0)"
         },
         {
           "name": "wallets_version_positive_check",
           "expression": "version >= 1",
-          "definition": "CHECK ((version >= 1))",
-          "columnName": "version"
+          "definition": "check (version >= 1)"
         }
       ],
       "triggers": [],

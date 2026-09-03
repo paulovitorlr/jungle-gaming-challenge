@@ -10,6 +10,15 @@ import { ProcessWagerTransactionUseCase } from './process-wager-transaction.use-
 import { WagerFailureCode } from '../../domain/enums/wager-failure-code.enum.js';
 import { WagerTransaction } from '../../domain/entities/wager-transaction.js';
 import { IdempotencyConflictError } from '../errors/idempotency-conflict.error.js';
+import { OutboxMessageRepository } from '../../../messaging/domain/repositories/outbox-message.repository.js';
+
+const createOutboxRepositoryMock =
+    (): OutboxMessageRepository =>
+        ({
+            add: vi.fn().mockResolvedValue(undefined),
+            findDueForPublishing: vi.fn(),
+            update: vi.fn().mockResolvedValue(undefined),
+        }) as unknown as OutboxMessageRepository;
 
 describe('ProcessWagerTransactionUseCase', () => {
     it('should process a BET successfully', async () => {
@@ -34,6 +43,7 @@ describe('ProcessWagerTransactionUseCase', () => {
 
         const walletLedgerRepository = {
             add: vi.fn(),
+            findByWalletId: vi.fn(),
         };
 
         const wagerTransactionRepository = {
@@ -47,11 +57,15 @@ describe('ProcessWagerTransactionUseCase', () => {
             execute: vi.fn(async (work) => work()),
         };
 
+        const outboxRepository =
+            createOutboxRepositoryMock();
+
         const useCase = new ProcessWagerTransactionUseCase(
             walletRepository,
             walletLedgerRepository,
             wagerTransactionRepository,
             unitOfWork,
+            outboxRepository,
         );
 
         const result = await useCase.execute({
@@ -89,6 +103,9 @@ describe('ProcessWagerTransactionUseCase', () => {
 
         expect(wagerTransactionRepository.save)
             .toHaveBeenCalledOnce();
+
+        expect(outboxRepository.add)
+            .toHaveBeenCalledTimes(2);
 
         expect(unitOfWork.execute)
             .toHaveBeenCalledOnce();
@@ -163,6 +180,7 @@ describe('ProcessWagerTransactionUseCase', () => {
 
         const walletLedgerRepository = {
             add: vi.fn(),
+            findByWalletId: vi.fn(),
         };
 
         const wagerTransactionRepository = {
@@ -180,11 +198,15 @@ describe('ProcessWagerTransactionUseCase', () => {
             execute: vi.fn(async (work) => work()),
         };
 
+        const outboxRepository =
+            createOutboxRepositoryMock();
+
         const useCase = new ProcessWagerTransactionUseCase(
             walletRepository,
             walletLedgerRepository,
             wagerTransactionRepository,
             unitOfWork,
+            outboxRepository,
         );
 
         await expect(
@@ -217,6 +239,9 @@ describe('ProcessWagerTransactionUseCase', () => {
             .not.toHaveBeenCalled();
 
         expect(wagerTransactionRepository.save)
+            .not.toHaveBeenCalled();
+
+        expect(outboxRepository.add)
             .not.toHaveBeenCalled();
     });
 
@@ -262,6 +287,7 @@ describe('ProcessWagerTransactionUseCase', () => {
 
         const walletLedgerRepository = {
             add: vi.fn(),
+            findByWalletId: vi.fn(),
         };
 
         const wagerTransactionRepository = {
@@ -280,11 +306,15 @@ describe('ProcessWagerTransactionUseCase', () => {
             execute: vi.fn(async (work) => work()),
         };
 
+        const outboxRepository =
+            createOutboxRepositoryMock();
+
         const useCase = new ProcessWagerTransactionUseCase(
             walletRepository,
             walletLedgerRepository,
             wagerTransactionRepository,
             unitOfWork,
+            outboxRepository,
         );
 
         const result = await useCase.execute({
@@ -322,6 +352,9 @@ describe('ProcessWagerTransactionUseCase', () => {
         expect(wagerTransactionRepository.save)
             .toHaveBeenCalledOnce();
 
+        expect(outboxRepository.add)
+            .toHaveBeenCalledOnce();
+
         expect(unitOfWork.execute)
             .toHaveBeenCalledTimes(2);
     });
@@ -348,6 +381,7 @@ describe('ProcessWagerTransactionUseCase', () => {
 
         const walletLedgerRepository = {
             add: vi.fn(),
+            findByWalletId: vi.fn().mockResolvedValue([]),
         };
 
         const wagerTransactionRepository = {
@@ -361,11 +395,15 @@ describe('ProcessWagerTransactionUseCase', () => {
             execute: vi.fn(async (work) => work()),
         };
 
+        const outboxRepository =
+            createOutboxRepositoryMock();
+
         const useCase = new ProcessWagerTransactionUseCase(
             walletRepository,
             walletLedgerRepository,
             wagerTransactionRepository,
             unitOfWork,
+            outboxRepository,
         );
 
         const result = await useCase.execute({
@@ -397,6 +435,9 @@ describe('ProcessWagerTransactionUseCase', () => {
         expect(wagerTransactionRepository.save)
             .toHaveBeenCalledOnce();
 
+        expect(outboxRepository.add)
+            .toHaveBeenCalledOnce();
+
         const savedTransaction =
             wagerTransactionRepository.save.mock.calls[0][0];
 
@@ -409,6 +450,6 @@ describe('ProcessWagerTransactionUseCase', () => {
         );
     });
 
-;
-    
+    ;
+
 });

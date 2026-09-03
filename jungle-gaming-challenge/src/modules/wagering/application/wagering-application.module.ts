@@ -13,6 +13,7 @@ import {
 import { WalletPersistenceModule } from '../../wallet/infrastructure/persistence/wallet-persistence.module.js';
 
 import { WagerTransactionRepository } from '../domain/repositories/wager-transaction.repository.js';
+
 import { WageringPersistenceModule } from '../infrastructure/persistence/wagering-persistence.module.js';
 
 import {
@@ -22,6 +23,10 @@ import {
 
 import { DatabaseTransactionModule } from '../../../shared/infrastructure/database/database-transaction.module.js';
 
+import { MessagingPersistenceModule } from '../../messaging/infrastructure/persistence/messaging-persistence.module.js';
+
+import { OutboxMessageRepository } from '../../messaging/domain/repositories/outbox-message.repository.js';
+
 import { ProcessWagerTransactionUseCase } from './use-cases/process-wager-transaction.use-case.js';
 
 @Module({
@@ -29,25 +34,36 @@ import { ProcessWagerTransactionUseCase } from './use-cases/process-wager-transa
     WalletPersistenceModule,
     WageringPersistenceModule,
     DatabaseTransactionModule,
+    MessagingPersistenceModule,
   ],
 
   providers: [
     {
-      provide: ProcessWagerTransactionUseCase,
+      provide:
+        ProcessWagerTransactionUseCase,
 
       useFactory: (
-        walletRepository: WalletRepository,
+        walletRepository:
+          WalletRepository,
+
         walletLedgerRepository:
           WalletLedgerRepository,
+
         wagerTransactionRepository:
           WagerTransactionRepository,
-        unitOfWork: UnitOfWork,
+
+        unitOfWork:
+          UnitOfWork,
+
+        outboxRepository:
+          OutboxMessageRepository,
       ) =>
         new ProcessWagerTransactionUseCase(
           walletRepository,
           walletLedgerRepository,
           wagerTransactionRepository,
           unitOfWork,
+          outboxRepository,
         ),
 
       inject: [
@@ -55,6 +71,7 @@ import { ProcessWagerTransactionUseCase } from './use-cases/process-wager-transa
         WALLET_LEDGER_REPOSITORY,
         WagerTransactionRepository,
         UNIT_OF_WORK,
+        OutboxMessageRepository,
       ],
     },
   ],
