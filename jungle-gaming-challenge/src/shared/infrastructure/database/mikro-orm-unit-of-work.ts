@@ -6,40 +6,26 @@ import { UniqueConstraintViolationError } from '../../application/errors/unique-
 
 @Injectable()
 export class MikroOrmUnitOfWork implements UnitOfWork {
-  constructor(
-    private readonly entityManager: EntityManager,
-  ) {}
+  constructor(private readonly entityManager: EntityManager) {}
 
-  async execute<T>(
-    work: () => Promise<T>,
-  ): Promise<T> {
+  async execute<T>(work: () => Promise<T>): Promise<T> {
     try {
-      return await this.entityManager.transactional(
-        async () => work(),
-      );
+      return await this.entityManager.transactional(async () => work());
     } catch (error: unknown) {
-      const constraint =
-        this.getUniqueConstraint(error);
+      const constraint = this.getUniqueConstraint(error);
 
       if (constraint) {
-        throw new UniqueConstraintViolationError(
-          constraint,
-        );
+        throw new UniqueConstraintViolationError(constraint);
       }
 
       throw error;
     }
   }
 
-  private getUniqueConstraint(
-    error: unknown,
-  ): string | undefined {
+  private getUniqueConstraint(error: unknown): string | undefined {
     let current: unknown = error;
 
-    while (
-      current &&
-      typeof current === 'object'
-    ) {
+    while (current && typeof current === 'object') {
       const candidate = current as {
         code?: string;
         constraint?: string;

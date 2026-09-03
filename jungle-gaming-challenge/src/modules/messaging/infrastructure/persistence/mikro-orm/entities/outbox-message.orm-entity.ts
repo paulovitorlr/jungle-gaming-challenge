@@ -13,8 +13,10 @@ import {
   name: 'outbox_messages_pending_index',
   properties: [
     'publishedAt',
+    'lockedUntil',
     'nextAttemptAt',
     'occurredAt',
+    'id',
   ],
 })
 @Check({
@@ -68,6 +70,22 @@ export class OutboxMessageOrmEntity {
     nullable: true,
   })
   nextAttemptAt?: Date;
+
+  @Property({
+    fieldName: 'lock_id',
+    type: 'string',
+    length: 100,
+    nullable: true,
+  })
+  lockId?: string;
+
+  @Property({
+    fieldName: 'locked_until',
+    type: Date,
+    columnType: 'timestamptz',
+    nullable: true,
+  })
+  lockedUntil?: Date;
 
   @Property({
     fieldName: 'published_at',

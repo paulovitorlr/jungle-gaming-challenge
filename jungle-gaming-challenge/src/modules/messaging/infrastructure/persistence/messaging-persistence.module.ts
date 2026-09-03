@@ -15,28 +15,20 @@ import { MikroOrmOutboxMessageRepository } from './mikro-orm/repositories/mikro-
 
 @Module({
   imports: [
-    MikroOrmModule.forFeature([
-      InboxMessageOrmEntity,
-      OutboxMessageOrmEntity,
-    ]),
+    MikroOrmModule.forFeature([InboxMessageOrmEntity, OutboxMessageOrmEntity]),
   ],
 
   providers: [
     {
       provide: InboxMessageRepository,
-      useClass:
-        MikroOrmInboxMessageRepository,
+      useClass: MikroOrmInboxMessageRepository,
     },
     {
       provide: OutboxMessageRepository,
-      useClass:
-        MikroOrmOutboxMessageRepository,
+      useClass: MikroOrmOutboxMessageRepository,
     },
   ],
 
-  exports: [
-    InboxMessageRepository,
-    OutboxMessageRepository,
-  ],
+  exports: [InboxMessageRepository, OutboxMessageRepository],
 })
 export class MessagingPersistenceModule {}

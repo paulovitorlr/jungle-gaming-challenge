@@ -11,8 +11,6 @@ import { MikroOrmUnitOfWork } from './mikro-orm-unit-of-work.js';
       useExisting: MikroOrmUnitOfWork,
     },
   ],
-  exports: [
-    UNIT_OF_WORK,
-  ],
+  exports: [UNIT_OF_WORK],
 })
 export class DatabaseTransactionModule {}

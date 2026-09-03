@@ -6,7 +6,5 @@ export abstract class InboxMessageRepository {
     messageId: string,
   ): Promise<InboxMessage | null>;
 
-  abstract add(
-    message: InboxMessage,
-  ): Promise<void>;
+  abstract add(message: InboxMessage): Promise<void>;
 }

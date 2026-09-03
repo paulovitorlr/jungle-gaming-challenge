@@ -21,12 +21,8 @@ import { ProcessWagerMessageUseCase } from '../../application/use-cases/process-
 import { SqsClientService } from './sqs-client.service.js';
 
 @Injectable()
-export class SqsWagerConsumerService
-  implements OnModuleInit, OnModuleDestroy
-{
-  private readonly logger = new Logger(
-    SqsWagerConsumerService.name,
-  );
+export class SqsWagerConsumerService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(SqsWagerConsumerService.name);
 
   private readonly queueName: string;
 
@@ -35,15 +31,10 @@ export class SqsWagerConsumerService
 
   constructor(
     configService: ConfigService,
-    private readonly sqsClient:
-      SqsClientService,
-    private readonly processWagerMessage:
-      ProcessWagerMessageUseCase,
+    private readonly sqsClient: SqsClientService,
+    private readonly processWagerMessage: ProcessWagerMessageUseCase,
   ) {
-    this.queueName =
-      configService.getOrThrow<string>(
-        'SQS_WAGER_QUEUE_NAME',
-      );
+    this.queueName = configService.getOrThrow<string>('SQS_WAGER_QUEUE_NAME');
   }
 
   onModuleInit(): void {
@@ -57,8 +48,7 @@ export class SqsWagerConsumerService
   }
 
   private async consume(): Promise<void> {
-    const queueUrl =
-      await this.resolveQueueUrl();
+    const queueUrl = await this.resolveQueueUrl();
 
     this.logger.log(
       JSON.stringify({
@@ -69,26 +59,17 @@ export class SqsWagerConsumerService
 
     while (!this.stopping) {
       try {
-        const response =
-          await this.sqsClient.client.send(
-            new ReceiveMessageCommand({
-              QueueUrl: queueUrl,
-              MaxNumberOfMessages: 10,
-              WaitTimeSeconds: 20,
-              MessageSystemAttributeNames: [
-                'ApproximateReceiveCount',
-              ],
-            }),
-          );
+        const response = await this.sqsClient.client.send(
+          new ReceiveMessageCommand({
+            QueueUrl: queueUrl,
+            MaxNumberOfMessages: 10,
+            WaitTimeSeconds: 20,
+            MessageSystemAttributeNames: ['ApproximateReceiveCount'],
+          }),
+        );
 
-        for (
-          const message of
-          response.Messages ?? []
-        ) {
-          await this.processMessage(
-            queueUrl,
-            message,
-          );
+        for (const message of response.Messages ?? []) {
+          await this.processMessage(queueUrl, message);
         }
       } catch (error) {
         if (this.stopping) {
@@ -119,29 +100,18 @@ export class SqsWagerConsumerService
     sqsMessage: Message,
   ): Promise<void> {
     try {
-      if (
-        !sqsMessage.Body ||
-        !sqsMessage.ReceiptHandle
-      ) {
-        throw new Error(
-          'SQS message is missing body or receipt handle',
-        );
+      if (!sqsMessage.Body || !sqsMessage.ReceiptHandle) {
+        throw new Error('SQS message is missing body or receipt handle');
       }
 
-      const message = this.parseMessage(
-        sqsMessage.Body,
-      );
+      const message = this.parseMessage(sqsMessage.Body);
 
-      const result =
-        await this.processWagerMessage.execute(
-          message,
-        );
+      const result = await this.processWagerMessage.execute(message);
 
       await this.sqsClient.client.send(
         new DeleteMessageCommand({
           QueueUrl: queueUrl,
-          ReceiptHandle:
-            sqsMessage.ReceiptHandle,
+          ReceiptHandle: sqsMessage.ReceiptHandle,
         }),
       );
 
@@ -149,14 +119,10 @@ export class SqsWagerConsumerService
         JSON.stringify({
           event: 'sqs_message_processed',
           messageId: message.messageId,
-          transactionId:
-            result.wager?.transactionId,
-          duplicate:
-            result.duplicateMessage,
-          providerId:
-            message.data.providerId,
-          walletId:
-            message.data.walletId,
+          transactionId: result.wager?.transactionId,
+          duplicate: result.duplicateMessage,
+          providerId: message.data.providerId,
+          walletId: message.data.walletId,
         }),
       );
     } catch (error) {
@@ -169,11 +135,8 @@ export class SqsWagerConsumerService
       this.logger.error(
         JSON.stringify({
           event: 'sqs_message_failed',
-          sqsMessageId:
-            sqsMessage.MessageId,
-          receiveCount:
-            sqsMessage.Attributes
-              ?.ApproximateReceiveCount,
+          sqsMessageId: sqsMessage.MessageId,
+          receiveCount: sqsMessage.Attributes?.ApproximateReceiveCount,
           error: this.errorMessage(error),
         }),
       );
@@ -181,66 +144,45 @@ export class SqsWagerConsumerService
   }
 
   private async resolveQueueUrl(): Promise<string> {
-    const response =
-      await this.sqsClient.client.send(
-        new GetQueueUrlCommand({
-          QueueName: this.queueName,
-        }),
-      );
+    const response = await this.sqsClient.client.send(
+      new GetQueueUrlCommand({
+        QueueName: this.queueName,
+      }),
+    );
 
     if (!response.QueueUrl) {
-      throw new Error(
-        `SQS queue ${this.queueName} was not found`,
-      );
+      throw new Error(`SQS queue ${this.queueName} was not found`);
     }
 
     return response.QueueUrl;
   }
 
-  private parseMessage(
-    body: string,
-  ): WagerTransactionRequestedMessage {
+  private parseMessage(body: string): WagerTransactionRequestedMessage {
     const parsed: unknown = JSON.parse(body);
 
     if (
       !this.isRecord(parsed) ||
       typeof parsed.messageId !== 'string' ||
       parsed.messageId.trim().length === 0 ||
-      parsed.type !==
-        'WagerTransactionRequested' ||
+      parsed.type !== 'WagerTransactionRequested' ||
       typeof parsed.occurredAt !== 'string' ||
       !this.isRecord(parsed.data)
     ) {
-      throw new Error(
-        'Invalid WagerTransactionRequested message',
-      );
+      throw new Error('Invalid WagerTransactionRequested message');
     }
 
-    return parsed as unknown as
-      WagerTransactionRequestedMessage;
+    return parsed as unknown as WagerTransactionRequestedMessage;
   }
 
-  private isRecord(
-    value: unknown,
-  ): value is Record<string, unknown> {
-    return (
-      value !== null &&
-      typeof value === 'object' &&
-      !Array.isArray(value)
-    );
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
   }
 
-  private errorMessage(
-    error: unknown,
-  ): string {
-    return error instanceof Error
-      ? error.message
-      : 'Unknown error';
+  private errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : 'Unknown error';
   }
 
-  private delay(
-    milliseconds: number,
-  ): Promise<void> {
+  private delay(milliseconds: number): Promise<void> {
     return new Promise((resolve) => {
       setTimeout(resolve, milliseconds);
     });

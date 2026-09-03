@@ -1,9 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
-import {
-  EntityManager,
-  MikroORM,
-} from '@mikro-orm/postgresql';
+import { EntityManager, MikroORM } from '@mikro-orm/postgresql';
 
 import {
   GetQueueAttributesCommand,
@@ -52,14 +49,11 @@ describe('SQS wager consumer', () => {
   let unitOfWork: UnitOfWork;
 
   let walletRepository: WalletRepository;
-  let walletLedgerRepository:
-    WalletLedgerRepository;
+  let walletLedgerRepository: WalletLedgerRepository;
 
-  let wagerTransactionRepository:
-    WagerTransactionRepository;
+  let wagerTransactionRepository: WagerTransactionRepository;
 
-  let inboxRepository:
-    InboxMessageRepository;
+  let inboxRepository: InboxMessageRepository;
 
   let sqsClient: SqsClientService;
   let queueUrl: string;
@@ -76,25 +70,15 @@ describe('SQS wager consumer', () => {
 
     unitOfWork = moduleRef.get(UNIT_OF_WORK);
 
-    walletRepository = moduleRef.get(
-      WALLET_REPOSITORY,
-    );
+    walletRepository = moduleRef.get(WALLET_REPOSITORY);
 
-    walletLedgerRepository = moduleRef.get(
-      WALLET_LEDGER_REPOSITORY,
-    );
+    walletLedgerRepository = moduleRef.get(WALLET_LEDGER_REPOSITORY);
 
-    wagerTransactionRepository = moduleRef.get(
-      WagerTransactionRepository,
-    );
+    wagerTransactionRepository = moduleRef.get(WagerTransactionRepository);
 
-    inboxRepository = moduleRef.get(
-      InboxMessageRepository,
-    );
+    inboxRepository = moduleRef.get(InboxMessageRepository);
 
-    sqsClient = moduleRef.get(
-      SqsClientService,
-    );
+    sqsClient = moduleRef.get(SqsClientService);
 
     const response = await sqsClient.client.send(
       new GetQueueUrlCommand({
@@ -103,9 +87,7 @@ describe('SQS wager consumer', () => {
     );
 
     if (!response.QueueUrl) {
-      throw new Error(
-        'Wager queue was not found',
-      );
+      throw new Error('Wager queue was not found');
     }
 
     queueUrl = response.QueueUrl;
@@ -118,25 +100,13 @@ describe('SQS wager consumer', () => {
       }),
     );
 
-    await entityManager.nativeDelete(
-      InboxMessageOrmEntity,
-      {},
-    );
+    await entityManager.nativeDelete(InboxMessageOrmEntity, {});
 
-    await entityManager.nativeDelete(
-      WagerTransactionOrmEntity,
-      {},
-    );
+    await entityManager.nativeDelete(WagerTransactionOrmEntity, {});
 
-    await entityManager.nativeDelete(
-      WalletLedgerOrmEntity,
-      {},
-    );
+    await entityManager.nativeDelete(WalletLedgerOrmEntity, {});
 
-    await entityManager.nativeDelete(
-      WalletOrmEntity,
-      {},
-    );
+    await entityManager.nativeDelete(WalletOrmEntity, {});
   });
 
   afterAll(async () => {
@@ -144,10 +114,7 @@ describe('SQS wager consumer', () => {
   });
 
   it('should debit the wallet once when the same message is delivered twice', async () => {
-    const wallet = Wallet.open(
-      'player-sqs',
-      'BRL',
-    );
+    const wallet = Wallet.open('player-sqs', 'BRL');
 
     const openingEntry = wallet.credit(
       'opening-sqs',
@@ -160,23 +127,18 @@ describe('SQS wager consumer', () => {
     await unitOfWork.execute(async () => {
       await walletRepository.add(wallet);
 
-      await walletLedgerRepository.add(
-        openingEntry,
-      );
+      await walletLedgerRepository.add(openingEntry);
     });
 
     const message = {
       messageId: 'message-sqs-123',
       type: 'WagerTransactionRequested',
-      occurredAt:
-        new Date().toISOString(),
+      occurredAt: new Date().toISOString(),
 
       data: {
         providerId: 'provider-sqs',
-        externalTransactionId:
-          'external-sqs-123',
-        idempotencyKey:
-          'provider-sqs:external-sqs-123',
+        externalTransactionId: 'external-sqs-123',
+        idempotencyKey: 'provider-sqs:external-sqs-123',
         playerId: 'player-sqs',
         walletId: wallet.id.toString(),
         roundId: 'round-sqs-123',
@@ -210,89 +172,66 @@ describe('SQS wager consumer', () => {
 
     await waitUntil(async () => {
       return unitOfWork.execute(async () => {
-        const inbox =
-          await inboxRepository.findByIdentity(
-            'wager-transaction-consumer',
-            message.messageId,
-          );
+        const inbox = await inboxRepository.findByIdentity(
+          'wager-transaction-consumer',
+          message.messageId,
+        );
 
         return inbox?.isProcessed() ?? false;
       });
     });
 
     await waitUntil(async () => {
-      const response =
-        await sqsClient.client.send(
-          new GetQueueAttributesCommand({
-            QueueUrl: queueUrl,
-            AttributeNames: [
-              'ApproximateNumberOfMessages',
-              'ApproximateNumberOfMessagesNotVisible',
-            ],
-          }),
-        );
+      const response = await sqsClient.client.send(
+        new GetQueueAttributesCommand({
+          QueueUrl: queueUrl,
+          AttributeNames: [
+            'ApproximateNumberOfMessages',
+            'ApproximateNumberOfMessagesNotVisible',
+          ],
+        }),
+      );
 
       return (
-        response.Attributes
-          ?.ApproximateNumberOfMessages ===
-          '0' &&
-        response.Attributes
-          ?.ApproximateNumberOfMessagesNotVisible ===
-          '0'
+        response.Attributes?.ApproximateNumberOfMessages === '0' &&
+        response.Attributes?.ApproximateNumberOfMessagesNotVisible === '0'
       );
     });
 
-    const result = await unitOfWork.execute(
-      async () => {
-        const persistedWallet =
-          await walletRepository.findById(
-            wallet.id,
-          );
+    const result = await unitOfWork.execute(async () => {
+      const persistedWallet = await walletRepository.findById(wallet.id);
 
-        const transaction =
-          await wagerTransactionRepository
-            .findByIdempotencyKey(
-              message.data.providerId,
-              message.data.idempotencyKey,
-            );
-
-        const ledgerEntries =
-          await walletLedgerRepository
-            .findByWalletId(wallet.id);
-
-        const inbox =
-          await inboxRepository.findByIdentity(
-            'wager-transaction-consumer',
-            message.messageId,
-          );
-
-        return {
-          persistedWallet,
-          transaction,
-          ledgerEntries,
-          inbox,
-        };
-      },
-    );
-
-    expect(
-      result.persistedWallet?.balance.toString(),
-    ).toBe('75.00');
-
-    expect(result.transaction?.status).toBe(
-      WagerTransactionStatus.Processed,
-    );
-
-    expect(result.inbox?.isProcessed()).toBe(
-      true,
-    );
-
-    const wagerLedgerEntries =
-      result.ledgerEntries.filter(
-        (entry) =>
-          entry.transactionId ===
-          result.transaction?.id.toString(),
+      const transaction = await wagerTransactionRepository.findByIdempotencyKey(
+        message.data.providerId,
+        message.data.idempotencyKey,
       );
+
+      const ledgerEntries = await walletLedgerRepository.findByWalletId(
+        wallet.id,
+      );
+
+      const inbox = await inboxRepository.findByIdentity(
+        'wager-transaction-consumer',
+        message.messageId,
+      );
+
+      return {
+        persistedWallet,
+        transaction,
+        ledgerEntries,
+        inbox,
+      };
+    });
+
+    expect(result.persistedWallet?.balance.toString()).toBe('75.00');
+
+    expect(result.transaction?.status).toBe(WagerTransactionStatus.Processed);
+
+    expect(result.inbox?.isProcessed()).toBe(true);
+
+    const wagerLedgerEntries = result.ledgerEntries.filter(
+      (entry) => entry.transactionId === result.transaction?.id.toString(),
+    );
 
     expect(wagerLedgerEntries).toHaveLength(1);
   });
@@ -314,7 +253,5 @@ async function waitUntil(
     });
   }
 
-  throw new Error(
-    `Condition was not met within ${timeoutMs}ms`,
-  );
+  throw new Error(`Condition was not met within ${timeoutMs}ms`);
 }

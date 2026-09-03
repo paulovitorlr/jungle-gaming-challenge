@@ -1,12 +1,6 @@
-import {
-  type INestApplication,
-} from '@nestjs/common';
-import {
-  Test,
-  type TestingModule,
-} from '@nestjs/testing';
+import { type INestApplication } from '@nestjs/common';
+import { Test, type TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-
 
 import { AppModule } from '../src/app.module.js';
 
@@ -14,10 +8,9 @@ describe('AppController (e2e)', () => {
   let app: INestApplication;
 
   beforeEach(async () => {
-    const moduleFixture: TestingModule =
-      await Test.createTestingModule({
-        imports: [AppModule],
-      }).compile();
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
 
     app = moduleFixture.createNestApplication();
 
@@ -29,11 +22,8 @@ describe('AppController (e2e)', () => {
   });
 
   it('/health (GET)', async () => {
-    await request(app.getHttpServer())
-      .get('/health')
-      .expect(200)
-      .expect({
-        status: 'ok',
-      });
+    await request(app.getHttpServer()).get('/health').expect(200).expect({
+      status: 'ok',
+    });
   });
 });

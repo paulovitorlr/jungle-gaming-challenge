@@ -12,444 +12,394 @@ import { WagerTransaction } from '../../domain/entities/wager-transaction.js';
 import { IdempotencyConflictError } from '../errors/idempotency-conflict.error.js';
 import { OutboxMessageRepository } from '../../../messaging/domain/repositories/outbox-message.repository.js';
 
-const createOutboxRepositoryMock =
-    (): OutboxMessageRepository =>
-        ({
-            add: vi.fn().mockResolvedValue(undefined),
-            findDueForPublishing: vi.fn(),
-            update: vi.fn().mockResolvedValue(undefined),
-        }) as unknown as OutboxMessageRepository;
+const createOutboxRepositoryMock = (): OutboxMessageRepository =>
+  ({
+    add: vi.fn().mockResolvedValue(undefined),
+    claimDueForPublishing: vi.fn(),
+    updateClaimed: vi.fn().mockResolvedValue(true),
+  }) as unknown as OutboxMessageRepository;
 
 describe('ProcessWagerTransactionUseCase', () => {
-    it('should process a BET successfully', async () => {
-        const wallet = Wallet.rehydrate({
-            id: WalletId.from('wallet-123'),
-            playerId: 'player-123',
-            currency: 'BRL',
-            balance: Money.from({
-                amount: '100.00',
-                currency: 'BRL',
-            }),
-            version: 1,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-        });
-
-        const walletRepository = {
-            findById: vi.fn().mockResolvedValue(wallet),
-            add: vi.fn(),
-            update: vi.fn().mockResolvedValue(true),
-        };
-
-        const walletLedgerRepository = {
-            add: vi.fn(),
-            findByWalletId: vi.fn(),
-        };
-
-        const wagerTransactionRepository = {
-            findById: vi.fn(),
-            findByIdempotencyKey: vi.fn().mockResolvedValue(null),
-            findByProviderAndExternalTransactionId: vi.fn(),
-            save: vi.fn(),
-        };
-
-        const unitOfWork = {
-            execute: vi.fn(async (work) => work()),
-        };
-
-        const outboxRepository =
-            createOutboxRepositoryMock();
-
-        const useCase = new ProcessWagerTransactionUseCase(
-            walletRepository,
-            walletLedgerRepository,
-            wagerTransactionRepository,
-            unitOfWork,
-            outboxRepository,
-        );
-
-        const result = await useCase.execute({
-            providerId: 'provider-a',
-            externalTransactionId: 'transaction-123',
-            idempotencyKey: 'provider-a:transaction-123',
-            payloadHash: 'hash-123',
-
-            walletId: 'wallet-123',
-            playerId: 'player-123',
-            roundId: 'round-123',
-            gameId: 'game-123',
-
-            kind: WagerTransactionKind.Bet,
-
-            amount: '25.00',
-            currency: 'BRL',
-        });
-
-        expect(result.status).toBe(
-            WagerTransactionStatus.Processed,
-        );
-
-        expect(result.balance).toBe('75.00');
-
-        expect(result.currency).toBe('BRL');
-
-        expect(result.idempotentReplay).toBe(false);
-
-        expect(walletRepository.update)
-            .toHaveBeenCalledOnce();
-
-        expect(walletLedgerRepository.add)
-            .toHaveBeenCalledOnce();
-
-        expect(wagerTransactionRepository.save)
-            .toHaveBeenCalledOnce();
-
-        expect(outboxRepository.add)
-            .toHaveBeenCalledTimes(2);
-
-        expect(unitOfWork.execute)
-            .toHaveBeenCalledOnce();
+  it('should process a BET successfully', async () => {
+    const wallet = Wallet.rehydrate({
+      id: WalletId.from('wallet-123'),
+      playerId: 'player-123',
+      currency: 'BRL',
+      balance: Money.from({
+        amount: '100.00',
+        currency: 'BRL',
+      }),
+      version: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
 
-    it('should mark a transaction as processed', () => {
-        const transaction = WagerTransaction.create({
-            providerId: 'provider-a',
-            externalTransactionId: 'transaction-123',
-            idempotencyKey: 'provider-a:transaction-123',
-            payloadHash: 'hash-123',
-            walletId: WalletId.from('wallet-123'),
-            playerId: 'player-123',
-            roundId: 'round-123',
-            gameId: 'game-123',
-            kind: WagerTransactionKind.Bet,
-            money: Money.from({
-                amount: '25.00',
-                currency: 'BRL',
-            }),
-        });
+    const walletRepository = {
+      findById: vi.fn().mockResolvedValue(wallet),
+      add: vi.fn(),
+      update: vi.fn().mockResolvedValue(true),
+    };
 
-        const processedAt = new Date('2026-09-01T13:00:00.000Z');
+    const walletLedgerRepository = {
+      add: vi.fn(),
+      findByWalletId: vi.fn(),
+    };
 
-        const resultingBalance = Money.from({
-            amount: '75.00',
-            currency: 'BRL',
-        });
+    const wagerTransactionRepository = {
+      findById: vi.fn(),
+      findByIdempotencyKey: vi.fn().mockResolvedValue(null),
+      findByProviderAndExternalTransactionId: vi.fn(),
+      save: vi.fn(),
+    };
 
-        transaction.markProcessed(
-            undefined,
-            Money.from({
-                amount: '75.00',
-                currency: 'BRL',
-            }),
-            processedAt,
-        );
+    const unitOfWork = {
+      execute: vi.fn(async (work) => work()),
+    };
 
-        expect(transaction.status).toBe(
-            WagerTransactionStatus.Processed,
-        );
+    const outboxRepository = createOutboxRepositoryMock();
 
-        expect(transaction.processedAt).toEqual(processedAt);
+    const useCase = new ProcessWagerTransactionUseCase(
+      walletRepository,
+      walletLedgerRepository,
+      wagerTransactionRepository,
+      unitOfWork,
+      outboxRepository,
+    );
 
-        expect(transaction.resultingBalance?.toString())
-            .toBe('75.00');
+    const result = await useCase.execute({
+      providerId: 'provider-a',
+      externalTransactionId: 'transaction-123',
+      idempotencyKey: 'provider-a:transaction-123',
+      payloadHash: 'hash-123',
+
+      walletId: 'wallet-123',
+      playerId: 'player-123',
+      roundId: 'round-123',
+      gameId: 'game-123',
+
+      kind: WagerTransactionKind.Bet,
+
+      amount: '25.00',
+      currency: 'BRL',
     });
 
+    expect(result.status).toBe(WagerTransactionStatus.Processed);
 
-    it('should reject the same idempotency key with a different payload', async () => {
-        const existingTransaction = WagerTransaction.create({
-            providerId: 'provider-a',
-            externalTransactionId: 'transaction-123',
-            idempotencyKey: 'provider-a:transaction-123',
-            payloadHash: 'hash-original',
-            walletId: WalletId.from('wallet-123'),
-            playerId: 'player-123',
-            roundId: 'round-123',
-            gameId: 'game-123',
-            kind: WagerTransactionKind.Bet,
-            money: Money.from({
-                amount: '25.00',
-                currency: 'BRL',
-            }),
-        });
+    expect(result.balance).toBe('75.00');
 
-        const walletRepository = {
-            findById: vi.fn(),
-            add: vi.fn(),
-            update: vi.fn(),
-        };
+    expect(result.currency).toBe('BRL');
 
-        const walletLedgerRepository = {
-            add: vi.fn(),
-            findByWalletId: vi.fn(),
-        };
+    expect(result.idempotentReplay).toBe(false);
 
-        const wagerTransactionRepository = {
-            findById: vi.fn(),
+    expect(walletRepository.update).toHaveBeenCalledOnce();
 
-            findByIdempotencyKey: vi
-                .fn()
-                .mockResolvedValue(existingTransaction),
+    expect(walletLedgerRepository.add).toHaveBeenCalledOnce();
 
-            findByProviderAndExternalTransactionId: vi.fn(),
-            save: vi.fn(),
-        };
+    expect(wagerTransactionRepository.save).toHaveBeenCalledOnce();
 
-        const unitOfWork = {
-            execute: vi.fn(async (work) => work()),
-        };
+    expect(outboxRepository.add).toHaveBeenCalledTimes(2);
 
-        const outboxRepository =
-            createOutboxRepositoryMock();
+    expect(unitOfWork.execute).toHaveBeenCalledOnce();
+  });
 
-        const useCase = new ProcessWagerTransactionUseCase(
-            walletRepository,
-            walletLedgerRepository,
-            wagerTransactionRepository,
-            unitOfWork,
-            outboxRepository,
-        );
-
-        await expect(
-            useCase.execute({
-                providerId: 'provider-a',
-                externalTransactionId: 'transaction-123',
-                idempotencyKey: 'provider-a:transaction-123',
-
-                payloadHash: 'hash-different',
-
-                walletId: 'wallet-123',
-                playerId: 'player-123',
-                roundId: 'round-123',
-                gameId: 'game-123',
-
-                kind: WagerTransactionKind.Bet,
-
-                amount: '25.00',
-                currency: 'BRL',
-            }),
-        ).rejects.toBeInstanceOf(IdempotencyConflictError);
-
-        expect(walletRepository.findById)
-            .not.toHaveBeenCalled();
-
-        expect(walletRepository.update)
-            .not.toHaveBeenCalled();
-
-        expect(walletLedgerRepository.add)
-            .not.toHaveBeenCalled();
-
-        expect(wagerTransactionRepository.save)
-            .not.toHaveBeenCalled();
-
-        expect(outboxRepository.add)
-            .not.toHaveBeenCalled();
+  it('should mark a transaction as processed', () => {
+    const transaction = WagerTransaction.create({
+      providerId: 'provider-a',
+      externalTransactionId: 'transaction-123',
+      idempotencyKey: 'provider-a:transaction-123',
+      payloadHash: 'hash-123',
+      walletId: WalletId.from('wallet-123'),
+      playerId: 'player-123',
+      roundId: 'round-123',
+      gameId: 'game-123',
+      kind: WagerTransactionKind.Bet,
+      money: Money.from({
+        amount: '25.00',
+        currency: 'BRL',
+      }),
     });
 
-    it('should retry after a wallet concurrency conflict', async () => {
-        const firstWallet = Wallet.rehydrate({
-            id: WalletId.from('wallet-123'),
-            playerId: 'player-123',
-            currency: 'BRL',
-            balance: Money.from({
-                amount: '100.00',
-                currency: 'BRL',
-            }),
-            version: 1,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-        });
+    const processedAt = new Date('2026-09-01T13:00:00.000Z');
 
-        const secondWallet = Wallet.rehydrate({
-            id: WalletId.from('wallet-123'),
-            playerId: 'player-123',
-            currency: 'BRL',
-            balance: Money.from({
-                amount: '20.00',
-                currency: 'BRL',
-            }),
-            version: 2,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-        });
-
-        const walletRepository = {
-            findById: vi
-                .fn()
-                .mockResolvedValueOnce(firstWallet)
-                .mockResolvedValueOnce(secondWallet),
-
-            add: vi.fn(),
-
-            update: vi
-                .fn()
-                .mockResolvedValueOnce(false),
-        };
-
-        const walletLedgerRepository = {
-            add: vi.fn(),
-            findByWalletId: vi.fn(),
-        };
-
-        const wagerTransactionRepository = {
-            findById: vi.fn(),
-
-            findByIdempotencyKey: vi
-                .fn()
-                .mockResolvedValue(null),
-
-            findByProviderAndExternalTransactionId: vi.fn(),
-
-            save: vi.fn(),
-        };
-
-        const unitOfWork = {
-            execute: vi.fn(async (work) => work()),
-        };
-
-        const outboxRepository =
-            createOutboxRepositoryMock();
-
-        const useCase = new ProcessWagerTransactionUseCase(
-            walletRepository,
-            walletLedgerRepository,
-            wagerTransactionRepository,
-            unitOfWork,
-            outboxRepository,
-        );
-
-        const result = await useCase.execute({
-            providerId: 'provider-a',
-            externalTransactionId: 'transaction-123',
-            idempotencyKey: 'provider-a:transaction-123',
-            payloadHash: 'hash-123',
-
-            walletId: 'wallet-123',
-            playerId: 'player-123',
-            roundId: 'round-123',
-            gameId: 'game-123',
-
-            kind: WagerTransactionKind.Bet,
-
-            amount: '80.00',
-            currency: 'BRL',
-        });
-
-        expect(result.status).toBe(
-            WagerTransactionStatus.Rejected,
-        );
-
-        expect(result.balance).toBe('20.00');
-
-        expect(walletRepository.findById)
-            .toHaveBeenCalledTimes(2);
-
-        expect(walletRepository.update)
-            .toHaveBeenCalledOnce();
-
-        expect(walletLedgerRepository.add)
-            .not.toHaveBeenCalled();
-
-        expect(wagerTransactionRepository.save)
-            .toHaveBeenCalledOnce();
-
-        expect(outboxRepository.add)
-            .toHaveBeenCalledOnce();
-
-        expect(unitOfWork.execute)
-            .toHaveBeenCalledTimes(2);
+    const resultingBalance = Money.from({
+      amount: '75.00',
+      currency: 'BRL',
     });
 
-    it('should reject a BET when wallet has insufficient funds', async () => {
-        const wallet = Wallet.rehydrate({
-            id: WalletId.from('wallet-123'),
-            playerId: 'player-123',
-            currency: 'BRL',
-            balance: Money.from({
-                amount: '20.00',
-                currency: 'BRL',
-            }),
-            version: 1,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-        });
+    transaction.markProcessed(
+      undefined,
+      resultingBalance,
+      processedAt,
+    );
 
-        const walletRepository = {
-            findById: vi.fn().mockResolvedValue(wallet),
-            add: vi.fn(),
-            update: vi.fn(),
-        };
+    expect(transaction.status).toBe(WagerTransactionStatus.Processed);
 
-        const walletLedgerRepository = {
-            add: vi.fn(),
-            findByWalletId: vi.fn().mockResolvedValue([]),
-        };
+    expect(transaction.processedAt).toEqual(processedAt);
 
-        const wagerTransactionRepository = {
-            findById: vi.fn(),
-            findByIdempotencyKey: vi.fn().mockResolvedValue(null),
-            findByProviderAndExternalTransactionId: vi.fn(),
-            save: vi.fn(),
-        };
+    expect(transaction.resultingBalance?.toString()).toBe('75.00');
+  });
 
-        const unitOfWork = {
-            execute: vi.fn(async (work) => work()),
-        };
-
-        const outboxRepository =
-            createOutboxRepositoryMock();
-
-        const useCase = new ProcessWagerTransactionUseCase(
-            walletRepository,
-            walletLedgerRepository,
-            wagerTransactionRepository,
-            unitOfWork,
-            outboxRepository,
-        );
-
-        const result = await useCase.execute({
-            providerId: 'provider-a',
-            externalTransactionId: 'transaction-123',
-            idempotencyKey: 'provider-a:transaction-123',
-            payloadHash: 'hash-123',
-            walletId: 'wallet-123',
-            playerId: 'player-123',
-            roundId: 'round-123',
-            gameId: 'game-123',
-            kind: WagerTransactionKind.Bet,
-            amount: '80.00',
-            currency: 'BRL',
-        });
-
-        expect(result.status).toBe(
-            WagerTransactionStatus.Rejected,
-        );
-
-        expect(result.balance).toBe('20.00');
-
-        expect(walletRepository.update)
-            .not.toHaveBeenCalled();
-
-        expect(walletLedgerRepository.add)
-            .not.toHaveBeenCalled();
-
-        expect(wagerTransactionRepository.save)
-            .toHaveBeenCalledOnce();
-
-        expect(outboxRepository.add)
-            .toHaveBeenCalledOnce();
-
-        const savedTransaction =
-            wagerTransactionRepository.save.mock.calls[0][0];
-
-        expect(savedTransaction.status).toBe(
-            WagerTransactionStatus.Rejected,
-        );
-
-        expect(savedTransaction.failureCode).toBe(
-            WagerFailureCode.InsufficientFunds,
-        );
+  it('should reject the same idempotency key with a different payload', async () => {
+    const existingTransaction = WagerTransaction.create({
+      providerId: 'provider-a',
+      externalTransactionId: 'transaction-123',
+      idempotencyKey: 'provider-a:transaction-123',
+      payloadHash: 'hash-original',
+      walletId: WalletId.from('wallet-123'),
+      playerId: 'player-123',
+      roundId: 'round-123',
+      gameId: 'game-123',
+      kind: WagerTransactionKind.Bet,
+      money: Money.from({
+        amount: '25.00',
+        currency: 'BRL',
+      }),
     });
 
-    ;
+    const walletRepository = {
+      findById: vi.fn(),
+      add: vi.fn(),
+      update: vi.fn(),
+    };
 
+    const walletLedgerRepository = {
+      add: vi.fn(),
+      findByWalletId: vi.fn(),
+    };
+
+    const wagerTransactionRepository = {
+      findById: vi.fn(),
+
+      findByIdempotencyKey: vi.fn().mockResolvedValue(existingTransaction),
+
+      findByProviderAndExternalTransactionId: vi.fn(),
+      save: vi.fn(),
+    };
+
+    const unitOfWork = {
+      execute: vi.fn(async (work) => work()),
+    };
+
+    const outboxRepository = createOutboxRepositoryMock();
+
+    const useCase = new ProcessWagerTransactionUseCase(
+      walletRepository,
+      walletLedgerRepository,
+      wagerTransactionRepository,
+      unitOfWork,
+      outboxRepository,
+    );
+
+    await expect(
+      useCase.execute({
+        providerId: 'provider-a',
+        externalTransactionId: 'transaction-123',
+        idempotencyKey: 'provider-a:transaction-123',
+
+        payloadHash: 'hash-different',
+
+        walletId: 'wallet-123',
+        playerId: 'player-123',
+        roundId: 'round-123',
+        gameId: 'game-123',
+
+        kind: WagerTransactionKind.Bet,
+
+        amount: '25.00',
+        currency: 'BRL',
+      }),
+    ).rejects.toBeInstanceOf(IdempotencyConflictError);
+
+    expect(walletRepository.findById).not.toHaveBeenCalled();
+
+    expect(walletRepository.update).not.toHaveBeenCalled();
+
+    expect(walletLedgerRepository.add).not.toHaveBeenCalled();
+
+    expect(wagerTransactionRepository.save).not.toHaveBeenCalled();
+
+    expect(outboxRepository.add).not.toHaveBeenCalled();
+  });
+
+  it('should retry after a wallet concurrency conflict', async () => {
+    const firstWallet = Wallet.rehydrate({
+      id: WalletId.from('wallet-123'),
+      playerId: 'player-123',
+      currency: 'BRL',
+      balance: Money.from({
+        amount: '100.00',
+        currency: 'BRL',
+      }),
+      version: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const secondWallet = Wallet.rehydrate({
+      id: WalletId.from('wallet-123'),
+      playerId: 'player-123',
+      currency: 'BRL',
+      balance: Money.from({
+        amount: '20.00',
+        currency: 'BRL',
+      }),
+      version: 2,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const walletRepository = {
+      findById: vi
+        .fn()
+        .mockResolvedValueOnce(firstWallet)
+        .mockResolvedValueOnce(secondWallet),
+
+      add: vi.fn(),
+
+      update: vi.fn().mockResolvedValueOnce(false),
+    };
+
+    const walletLedgerRepository = {
+      add: vi.fn(),
+      findByWalletId: vi.fn(),
+    };
+
+    const wagerTransactionRepository = {
+      findById: vi.fn(),
+
+      findByIdempotencyKey: vi.fn().mockResolvedValue(null),
+
+      findByProviderAndExternalTransactionId: vi.fn(),
+
+      save: vi.fn(),
+    };
+
+    const unitOfWork = {
+      execute: vi.fn(async (work) => work()),
+    };
+
+    const outboxRepository = createOutboxRepositoryMock();
+
+    const useCase = new ProcessWagerTransactionUseCase(
+      walletRepository,
+      walletLedgerRepository,
+      wagerTransactionRepository,
+      unitOfWork,
+      outboxRepository,
+    );
+
+    const result = await useCase.execute({
+      providerId: 'provider-a',
+      externalTransactionId: 'transaction-123',
+      idempotencyKey: 'provider-a:transaction-123',
+      payloadHash: 'hash-123',
+
+      walletId: 'wallet-123',
+      playerId: 'player-123',
+      roundId: 'round-123',
+      gameId: 'game-123',
+
+      kind: WagerTransactionKind.Bet,
+
+      amount: '80.00',
+      currency: 'BRL',
+    });
+
+    expect(result.status).toBe(WagerTransactionStatus.Rejected);
+
+    expect(result.balance).toBe('20.00');
+
+    expect(walletRepository.findById).toHaveBeenCalledTimes(2);
+
+    expect(walletRepository.update).toHaveBeenCalledOnce();
+
+    expect(walletLedgerRepository.add).not.toHaveBeenCalled();
+
+    expect(wagerTransactionRepository.save).toHaveBeenCalledOnce();
+
+    expect(outboxRepository.add).toHaveBeenCalledOnce();
+
+    expect(unitOfWork.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('should reject a BET when wallet has insufficient funds', async () => {
+    const wallet = Wallet.rehydrate({
+      id: WalletId.from('wallet-123'),
+      playerId: 'player-123',
+      currency: 'BRL',
+      balance: Money.from({
+        amount: '20.00',
+        currency: 'BRL',
+      }),
+      version: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const walletRepository = {
+      findById: vi.fn().mockResolvedValue(wallet),
+      add: vi.fn(),
+      update: vi.fn(),
+    };
+
+    const walletLedgerRepository = {
+      add: vi.fn(),
+      findByWalletId: vi.fn().mockResolvedValue([]),
+    };
+
+    const wagerTransactionRepository = {
+      findById: vi.fn(),
+      findByIdempotencyKey: vi.fn().mockResolvedValue(null),
+      findByProviderAndExternalTransactionId: vi.fn(),
+      save: vi.fn(),
+    };
+
+    const unitOfWork = {
+      execute: vi.fn(async (work) => work()),
+    };
+
+    const outboxRepository = createOutboxRepositoryMock();
+
+    const useCase = new ProcessWagerTransactionUseCase(
+      walletRepository,
+      walletLedgerRepository,
+      wagerTransactionRepository,
+      unitOfWork,
+      outboxRepository,
+    );
+
+    const result = await useCase.execute({
+      providerId: 'provider-a',
+      externalTransactionId: 'transaction-123',
+      idempotencyKey: 'provider-a:transaction-123',
+      payloadHash: 'hash-123',
+      walletId: 'wallet-123',
+      playerId: 'player-123',
+      roundId: 'round-123',
+      gameId: 'game-123',
+      kind: WagerTransactionKind.Bet,
+      amount: '80.00',
+      currency: 'BRL',
+    });
+
+    expect(result.status).toBe(WagerTransactionStatus.Rejected);
+
+    expect(result.balance).toBe('20.00');
+
+    expect(walletRepository.update).not.toHaveBeenCalled();
+
+    expect(walletLedgerRepository.add).not.toHaveBeenCalled();
+
+    expect(wagerTransactionRepository.save).toHaveBeenCalledOnce();
+
+    expect(outboxRepository.add).toHaveBeenCalledOnce();
+
+    const savedTransaction = wagerTransactionRepository.save.mock.calls[0][0];
+
+    expect(savedTransaction.status).toBe(WagerTransactionStatus.Rejected);
+
+    expect(savedTransaction.failureCode).toBe(
+      WagerFailureCode.InsufficientFunds,
+    );
+  });
 });

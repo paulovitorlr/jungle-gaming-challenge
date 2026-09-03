@@ -1,8 +1,7 @@
 import { Migration } from '@mikro-orm/migrations';
 
 export class Migration20260902201709_create_inbox_messages extends Migration {
-  override name =
-    'Migration20260902201709_create_inbox_messages';
+  override name = 'Migration20260902201709_create_inbox_messages';
 
   override up(): void | Promise<void> {
     this.addSql(`

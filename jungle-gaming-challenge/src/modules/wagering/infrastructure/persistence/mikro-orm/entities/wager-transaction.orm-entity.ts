@@ -8,29 +8,24 @@ import {
   Unique,
 } from '@mikro-orm/decorators/legacy';
 
-import { WalletOrmEntity } from '../../../../../wallet/infrastructure/persistence/mikro-orm/entities/wallet.orm-entity.js'; 
+import { WalletOrmEntity } from '../../../../../wallet/infrastructure/persistence/mikro-orm/entities/wallet.orm-entity.js';
 
 @Entity({ tableName: 'wager_transactions' })
-
 @Unique({
   name: 'uq_wager_transactions_provider_external_transaction',
   properties: ['providerId', 'externalTransactionId'],
 })
-
 @Unique({
   name: 'uq_wager_transactions_provider_idempotency_key',
   properties: ['providerId', 'idempotencyKey'],
 })
-
 @Index({
   properties: ['walletId'],
 })
-
 @Check({
   name: 'wager_transactions_amount_positive_check',
   expression: '"amount" > 0',
 })
-
 export class WagerTransactionOrmEntity {
   @PrimaryKey({
     type: 'string',

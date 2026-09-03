@@ -37,13 +37,9 @@ function makeProps(
   };
 }
 
-function processTransaction(
-  transaction: WagerTransaction,
-): WagerTransaction {
+function processTransaction(transaction: WagerTransaction): WagerTransaction {
   transaction.markProcessed(
-    transaction.requiresReference()
-      ? 'resolved-reference-id'
-      : undefined,
+    transaction.requiresReference() ? 'resolved-reference-id' : undefined,
     Money.from({
       amount: '75.00',
       currency: 'BRL',
@@ -69,8 +65,7 @@ function createReversal(
       gameId: reference.gameId,
       kind,
       money: reference.money,
-      referenceExternalTransactionId:
-        reference.externalTransactionId,
+      referenceExternalTransactionId: reference.externalTransactionId,
     }),
   );
 }
@@ -82,65 +77,43 @@ function expectReferenceFailure(
   try {
     action();
 
-    throw new Error(
-      'Expected reference validation to fail',
-    );
+    throw new Error('Expected reference validation to fail');
   } catch (error) {
-    expect(error).toBeInstanceOf(
-      InvalidWagerReferenceError,
-    );
+    expect(error).toBeInstanceOf(InvalidWagerReferenceError);
 
-    expect(
-      (error as InvalidWagerReferenceError).code,
-    ).toBe(expectedCode);
+    expect((error as InvalidWagerReferenceError).code).toBe(expectedCode);
   }
 }
 
 describe('WagerTransaction', () => {
   it('should create a pending wager transaction', () => {
-    const transaction =
-      WagerTransaction.create(makeProps());
+    const transaction = WagerTransaction.create(makeProps());
 
     expect(transaction.id).toBeDefined();
 
-    expect(transaction.status).toBe(
-      WagerTransactionStatus.Pending,
-    );
+    expect(transaction.status).toBe(WagerTransactionStatus.Pending);
 
-    expect(transaction.providerId).toBe(
-      'provider-a',
-    );
+    expect(transaction.providerId).toBe('provider-a');
 
-    expect(
-      transaction.externalTransactionId,
-    ).toBe('transaction-123');
+    expect(transaction.externalTransactionId).toBe('transaction-123');
 
-    expect(
-      transaction.referenceTransactionId,
-    ).toBeUndefined();
+    expect(transaction.referenceTransactionId).toBeUndefined();
 
-    expect(
-      transaction.failureCode,
-    ).toBeUndefined();
+    expect(transaction.failureCode).toBeUndefined();
 
-    expect(
-      transaction.processedAt,
-    ).toBeUndefined();
+    expect(transaction.processedAt).toBeUndefined();
   });
 
   it('should preserve the informed creation date', () => {
-    const createdAt =
-      new Date('2026-09-01T12:00:00.000Z');
+    const createdAt = new Date('2026-09-01T12:00:00.000Z');
 
-    const transaction =
-      WagerTransaction.create(
-        makeProps({
-          createdAt,
-        }),
-      );
+    const transaction = WagerTransaction.create(
+      makeProps({
+        createdAt,
+      }),
+    );
 
-    expect(transaction.createdAt)
-      .toEqual(createdAt);
+    expect(transaction.createdAt).toEqual(createdAt);
   });
 
   it('should reject zero money', () => {
@@ -150,9 +123,7 @@ describe('WagerTransaction', () => {
           money: Money.zero('BRL'),
         }),
       ),
-    ).toThrow(
-      'Wager transaction money must be positive',
-    );
+    ).toThrow('Wager transaction money must be positive');
   });
 
   it('should reject negative money', () => {
@@ -165,9 +136,7 @@ describe('WagerTransaction', () => {
           }),
         }),
       ),
-    ).toThrow(
-      'Wager transaction money must be positive',
-    );
+    ).toThrow('Wager transaction money must be positive');
   });
 
   it('should require a reference for refund', () => {
@@ -177,9 +146,7 @@ describe('WagerTransaction', () => {
           kind: WagerTransactionKind.Refund,
         }),
       ),
-    ).toThrow(
-      'REFUND requires an external transaction reference',
-    );
+    ).toThrow('REFUND requires an external transaction reference');
   });
 
   it('should require a reference for rollback', () => {
@@ -189,128 +156,82 @@ describe('WagerTransaction', () => {
           kind: WagerTransactionKind.Rollback,
         }),
       ),
-    ).toThrow(
-      'ROLLBACK requires an external transaction reference',
-    );
+    ).toThrow('ROLLBACK requires an external transaction reference');
   });
 
   it('should identify kinds that require a reference', () => {
-    const refund =
-      WagerTransaction.create(
-        makeProps({
-          kind: WagerTransactionKind.Refund,
-          referenceExternalTransactionId:
-            'original-bet',
-        }),
-      );
+    const refund = WagerTransaction.create(
+      makeProps({
+        kind: WagerTransactionKind.Refund,
+        referenceExternalTransactionId: 'original-bet',
+      }),
+    );
 
-    const bet =
-      WagerTransaction.create(makeProps());
+    const bet = WagerTransaction.create(makeProps());
 
-    expect(
-      refund.requiresReference(),
-    ).toBe(true);
+    expect(refund.requiresReference()).toBe(true);
 
-    expect(
-      bet.requiresReference(),
-    ).toBe(false);
+    expect(bet.requiresReference()).toBe(false);
   });
 
   it('should identify whether the transaction affects the balance', () => {
-    const loss =
-      WagerTransaction.create(
-        makeProps({
-          kind: WagerTransactionKind.Loss,
-        }),
-      );
+    const loss = WagerTransaction.create(
+      makeProps({
+        kind: WagerTransactionKind.Loss,
+      }),
+    );
 
-    const bet =
-      WagerTransaction.create(makeProps());
+    const bet = WagerTransaction.create(makeProps());
 
-    expect(
-      loss.affectsBalance(),
-    ).toBe(false);
+    expect(loss.affectsBalance()).toBe(false);
 
-    expect(
-      bet.affectsBalance(),
-    ).toBe(true);
+    expect(bet.affectsBalance()).toBe(true);
   });
 
   it('should compare the canonical payload hash', () => {
-    const transaction =
-      WagerTransaction.create(makeProps());
+    const transaction = WagerTransaction.create(makeProps());
 
-    expect(
-      transaction.matchesPayload(
-        'payload-hash',
-      ),
-    ).toBe(true);
+    expect(transaction.matchesPayload('payload-hash')).toBe(true);
 
-    expect(
-      transaction.matchesPayload(
-        'different-hash',
-      ),
-    ).toBe(false);
+    expect(transaction.matchesPayload('different-hash')).toBe(false);
   });
 
   it('should not create a transaction in a terminal state', () => {
-    const transaction =
-      WagerTransaction.create(makeProps());
+    const transaction = WagerTransaction.create(makeProps());
 
-    expect(
-      transaction.isTerminal(),
-    ).toBe(false);
+    expect(transaction.isTerminal()).toBe(false);
   });
 
   it('should mark a transaction as processed', () => {
-    const transaction =
-      WagerTransaction.create(makeProps());
+    const transaction = WagerTransaction.create(makeProps());
 
-    const processedAt =
-      new Date('2026-09-01T13:00:00.000Z');
+    const processedAt = new Date('2026-09-01T13:00:00.000Z');
 
-    const resultingBalance =
-      Money.from({
-        amount: '75.00',
-        currency: 'BRL',
-      });
+    const resultingBalance = Money.from({
+      amount: '75.00',
+      currency: 'BRL',
+    });
 
-    transaction.markProcessed(
-      undefined,
-      resultingBalance,
-      processedAt,
-    );
+    transaction.markProcessed(undefined, resultingBalance, processedAt);
 
-    expect(transaction.status).toBe(
-      WagerTransactionStatus.Processed,
-    );
+    expect(transaction.status).toBe(WagerTransactionStatus.Processed);
 
-    expect(
-      transaction.processedAt,
-    ).toEqual(processedAt);
+    expect(transaction.processedAt).toEqual(processedAt);
 
-    expect(
-      transaction.referenceTransactionId,
-    ).toBeUndefined();
+    expect(transaction.referenceTransactionId).toBeUndefined();
 
-    expect(
-      transaction.resultingBalance?.toString(),
-    ).toBe('75.00');
+    expect(transaction.resultingBalance?.toString()).toBe('75.00');
 
-    expect(
-      transaction.isTerminal(),
-    ).toBe(true);
+    expect(transaction.isTerminal()).toBe(true);
   });
 
   it('should require a resolved reference when processing a refund', () => {
-    const transaction =
-      WagerTransaction.create(
-        makeProps({
-          kind: WagerTransactionKind.Refund,
-          referenceExternalTransactionId:
-            'original-bet',
-        }),
-      );
+    const transaction = WagerTransaction.create(
+      makeProps({
+        kind: WagerTransactionKind.Refund,
+        referenceExternalTransactionId: 'original-bet',
+      }),
+    );
 
     expect(() =>
       transaction.markProcessed(
@@ -319,28 +240,20 @@ describe('WagerTransaction', () => {
           amount: '75.00',
           currency: 'BRL',
         }),
-        new Date(
-          '2026-09-01T13:00:00.000Z',
-        ),
+        new Date('2026-09-01T13:00:00.000Z'),
       ),
-    ).toThrow(
-      'REFUND requires a resolved transaction reference',
-    );
+    ).toThrow('REFUND requires a resolved transaction reference');
 
-    expect(transaction.status).toBe(
-      WagerTransactionStatus.Pending,
-    );
+    expect(transaction.status).toBe(WagerTransactionStatus.Pending);
   });
 
   it('should store the resolved internal transaction reference', () => {
-    const transaction =
-      WagerTransaction.create(
-        makeProps({
-          kind: WagerTransactionKind.Refund,
-          referenceExternalTransactionId:
-            'original-bet',
-        }),
-      );
+    const transaction = WagerTransaction.create(
+      makeProps({
+        kind: WagerTransactionKind.Refund,
+        referenceExternalTransactionId: 'original-bet',
+      }),
+    );
 
     transaction.markProcessed(
       'internal-bet-id',
@@ -348,59 +261,41 @@ describe('WagerTransaction', () => {
         amount: '75.00',
         currency: 'BRL',
       }),
-      new Date(
-        '2026-09-01T13:00:00.000Z',
-      ),
+      new Date('2026-09-01T13:00:00.000Z'),
     );
 
-    expect(transaction.status).toBe(
-      WagerTransactionStatus.Processed,
-    );
+    expect(transaction.status).toBe(WagerTransactionStatus.Processed);
 
-    expect(
-      transaction.referenceTransactionId,
-    ).toBe('internal-bet-id');
+    expect(transaction.referenceTransactionId).toBe('internal-bet-id');
   });
 
   it('should mark a transaction as pending reference', () => {
-    const transaction =
-      WagerTransaction.create(
-        makeProps({
-          kind: WagerTransactionKind.Rollback,
-          referenceExternalTransactionId:
-            'original-transaction',
-        }),
-      );
+    const transaction = WagerTransaction.create(
+      makeProps({
+        kind: WagerTransactionKind.Rollback,
+        referenceExternalTransactionId: 'original-transaction',
+      }),
+    );
 
     transaction.markPendingReference();
 
-    expect(transaction.status).toBe(
-      WagerTransactionStatus.PendingReference,
-    );
+    expect(transaction.status).toBe(WagerTransactionStatus.PendingReference);
 
-    expect(
-      transaction.isTerminal(),
-    ).toBe(false);
+    expect(transaction.isTerminal()).toBe(false);
   });
 
   it('should not mark a bet as pending reference', () => {
-    const transaction =
-      WagerTransaction.create(makeProps());
+    const transaction = WagerTransaction.create(makeProps());
 
-    expect(() =>
-      transaction.markPendingReference(),
-    ).toThrow(
+    expect(() => transaction.markPendingReference()).toThrow(
       'BET does not require a transaction reference',
     );
 
-    expect(transaction.status).toBe(
-      WagerTransactionStatus.Pending,
-    );
+    expect(transaction.status).toBe(WagerTransactionStatus.Pending);
   });
 
   it('should reject a transaction with a stable failure code', () => {
-    const transaction =
-      WagerTransaction.create(makeProps());
+    const transaction = WagerTransaction.create(makeProps());
 
     transaction.reject(
       WagerFailureCode.InsufficientFunds,
@@ -410,51 +305,31 @@ describe('WagerTransaction', () => {
       }),
     );
 
-    expect(transaction.status).toBe(
-      WagerTransactionStatus.Rejected,
-    );
+    expect(transaction.status).toBe(WagerTransactionStatus.Rejected);
 
-    expect(
-      transaction.failureCode,
-    ).toBe(
-      WagerFailureCode.InsufficientFunds,
-    );
+    expect(transaction.failureCode).toBe(WagerFailureCode.InsufficientFunds);
 
-    expect(
-      transaction.resultingBalance?.toString(),
-    ).toBe('20.00');
+    expect(transaction.resultingBalance?.toString()).toBe('20.00');
 
-    expect(
-      transaction.isTerminal(),
-    ).toBe(true);
+    expect(transaction.isTerminal()).toBe(true);
   });
 
   it('should fail a transaction with a stable failure code', () => {
-    const transaction =
-      WagerTransaction.create(makeProps());
+    const transaction = WagerTransaction.create(makeProps());
 
-    transaction.fail(
+    transaction.fail(WagerFailureCode.PermanentInfrastructureFailure);
+
+    expect(transaction.status).toBe(WagerTransactionStatus.Failed);
+
+    expect(transaction.failureCode).toBe(
       WagerFailureCode.PermanentInfrastructureFailure,
     );
 
-    expect(transaction.status).toBe(
-      WagerTransactionStatus.Failed,
-    );
-
-    expect(
-      transaction.failureCode,
-    ).toBe(
-      WagerFailureCode.PermanentInfrastructureFailure,
-    );
-
-    expect(
-      transaction.isTerminal(),
-    ).toBe(true);
+    expect(transaction.isTerminal()).toBe(true);
   });
 
   it('should prevent transitions from terminal states', () => {
-    const processed =
-      WagerTransaction.create(makeProps());
+    const processed = WagerTransaction.create(makeProps());
 
     processed.markProcessed(
       undefined,
@@ -465,8 +340,7 @@ describe('WagerTransaction', () => {
       new Date(),
     );
 
-    const rejected =
-      WagerTransaction.create(makeProps());
+    const rejected = WagerTransaction.create(makeProps());
 
     rejected.reject(
       WagerFailureCode.InsufficientFunds,
@@ -476,12 +350,9 @@ describe('WagerTransaction', () => {
       }),
     );
 
-    const failed =
-      WagerTransaction.create(makeProps());
+    const failed = WagerTransaction.create(makeProps());
 
-    failed.fail(
-      WagerFailureCode.PermanentInfrastructureFailure,
-    );
+    failed.fail(WagerFailureCode.PermanentInfrastructureFailure);
 
     expect(() =>
       processed.reject(
@@ -496,9 +367,7 @@ describe('WagerTransaction', () => {
     );
 
     expect(() =>
-      rejected.fail(
-        WagerFailureCode.PermanentInfrastructureFailure,
-      ),
+      rejected.fail(WagerFailureCode.PermanentInfrastructureFailure),
     ).toThrow(
       'Wager transaction cannot transition from terminal status REJECTED',
     );
@@ -518,196 +387,147 @@ describe('WagerTransaction', () => {
   });
 
   it('should return credit for opening, win and refund', () => {
-    const opening =
-      WagerTransaction.create(
-        makeProps({
-          kind: WagerTransactionKind.Opening,
-        }),
-      );
+    const opening = WagerTransaction.create(
+      makeProps({
+        kind: WagerTransactionKind.Opening,
+      }),
+    );
 
-    const win =
-      WagerTransaction.create(
-        makeProps({
-          kind: WagerTransactionKind.Win,
-        }),
-      );
+    const win = WagerTransaction.create(
+      makeProps({
+        kind: WagerTransactionKind.Win,
+      }),
+    );
 
-    const refund =
-      WagerTransaction.create(
-        makeProps({
-          kind: WagerTransactionKind.Refund,
-          referenceExternalTransactionId:
-            'original-bet',
-        }),
-      );
+    const refund = WagerTransaction.create(
+      makeProps({
+        kind: WagerTransactionKind.Refund,
+        referenceExternalTransactionId: 'original-bet',
+      }),
+    );
 
-    expect(
-      opening.ledgerDirectionFor(),
-    ).toBe(LedgerDirection.Credit);
+    expect(opening.ledgerDirectionFor()).toBe(LedgerDirection.Credit);
 
-    expect(
-      win.ledgerDirectionFor(),
-    ).toBe(LedgerDirection.Credit);
+    expect(win.ledgerDirectionFor()).toBe(LedgerDirection.Credit);
 
-    expect(
-      refund.ledgerDirectionFor(),
-    ).toBe(LedgerDirection.Credit);
+    expect(refund.ledgerDirectionFor()).toBe(LedgerDirection.Credit);
   });
 
   it('should return debit for a bet', () => {
-    const bet =
-      WagerTransaction.create(makeProps());
+    const bet = WagerTransaction.create(makeProps());
 
-    expect(
-      bet.ledgerDirectionFor(),
-    ).toBe(LedgerDirection.Debit);
+    expect(bet.ledgerDirectionFor()).toBe(LedgerDirection.Debit);
   });
 
   it('should not produce a ledger direction for loss', () => {
-    const loss =
-      WagerTransaction.create(
-        makeProps({
-          kind: WagerTransactionKind.Loss,
-        }),
-      );
+    const loss = WagerTransaction.create(
+      makeProps({
+        kind: WagerTransactionKind.Loss,
+      }),
+    );
 
-    expect(() =>
-      loss.ledgerDirectionFor(),
-    ).toThrow(
+    expect(() => loss.ledgerDirectionFor()).toThrow(
       'LOSS does not produce a ledger entry',
     );
   });
 
   it('should reverse a bet direction as credit', () => {
-    const bet =
-      WagerTransaction.create(makeProps());
+    const bet = WagerTransaction.create(makeProps());
 
-    const rollback =
-      WagerTransaction.create(
-        makeProps({
-          kind: WagerTransactionKind.Rollback,
-          referenceExternalTransactionId:
-            'original-bet',
-        }),
-      );
+    const rollback = WagerTransaction.create(
+      makeProps({
+        kind: WagerTransactionKind.Rollback,
+        referenceExternalTransactionId: 'original-bet',
+      }),
+    );
 
-    expect(
-      rollback.ledgerDirectionFor(bet),
-    ).toBe(LedgerDirection.Credit);
+    expect(rollback.ledgerDirectionFor(bet)).toBe(LedgerDirection.Credit);
   });
 
   it('should reverse a win direction as debit', () => {
-    const win =
-      WagerTransaction.create(
-        makeProps({
-          kind: WagerTransactionKind.Win,
-        }),
-      );
+    const win = WagerTransaction.create(
+      makeProps({
+        kind: WagerTransactionKind.Win,
+      }),
+    );
 
-    const rollback =
-      WagerTransaction.create(
-        makeProps({
-          kind: WagerTransactionKind.Rollback,
-          referenceExternalTransactionId:
-            'original-win',
-        }),
-      );
+    const rollback = WagerTransaction.create(
+      makeProps({
+        kind: WagerTransactionKind.Rollback,
+        referenceExternalTransactionId: 'original-win',
+      }),
+    );
 
-    expect(
-      rollback.ledgerDirectionFor(win),
-    ).toBe(LedgerDirection.Debit);
+    expect(rollback.ledgerDirectionFor(win)).toBe(LedgerDirection.Debit);
   });
 
   it('should reverse a refund direction as debit', () => {
-    const refund =
-      WagerTransaction.create(
-        makeProps({
-          kind: WagerTransactionKind.Refund,
-          referenceExternalTransactionId:
-            'original-bet',
-        }),
-      );
+    const refund = WagerTransaction.create(
+      makeProps({
+        kind: WagerTransactionKind.Refund,
+        referenceExternalTransactionId: 'original-bet',
+      }),
+    );
 
-    const rollback =
-      WagerTransaction.create(
-        makeProps({
-          kind: WagerTransactionKind.Rollback,
-          referenceExternalTransactionId:
-            'original-refund',
-        }),
-      );
+    const rollback = WagerTransaction.create(
+      makeProps({
+        kind: WagerTransactionKind.Rollback,
+        referenceExternalTransactionId: 'original-refund',
+      }),
+    );
 
-    expect(
-      rollback.ledgerDirectionFor(refund),
-    ).toBe(LedgerDirection.Debit);
+    expect(rollback.ledgerDirectionFor(refund)).toBe(LedgerDirection.Debit);
   });
 
   it('should require the referenced transaction to calculate rollback direction', () => {
-    const rollback =
-      WagerTransaction.create(
-        makeProps({
-          kind: WagerTransactionKind.Rollback,
-          referenceExternalTransactionId:
-            'original-transaction',
-        }),
-      );
+    const rollback = WagerTransaction.create(
+      makeProps({
+        kind: WagerTransactionKind.Rollback,
+        referenceExternalTransactionId: 'original-transaction',
+      }),
+    );
 
-    expect(() =>
-      rollback.ledgerDirectionFor(),
-    ).toThrow(
+    expect(() => rollback.ledgerDirectionFor()).toThrow(
       'ROLLBACK requires the referenced transaction',
     );
   });
 
   it('should reject an invalid rollback reference kind', () => {
-    const loss =
-      WagerTransaction.create(
-        makeProps({
-          kind: WagerTransactionKind.Loss,
-        }),
-      );
+    const loss = WagerTransaction.create(
+      makeProps({
+        kind: WagerTransactionKind.Loss,
+      }),
+    );
 
-    const rollback =
-      WagerTransaction.create(
-        makeProps({
-          kind: WagerTransactionKind.Rollback,
-          referenceExternalTransactionId:
-            'original-loss',
-        }),
-      );
+    const rollback = WagerTransaction.create(
+      makeProps({
+        kind: WagerTransactionKind.Rollback,
+        referenceExternalTransactionId: 'original-loss',
+      }),
+    );
 
-    expect(() =>
-      rollback.ledgerDirectionFor(loss),
-    ).toThrow(
+    expect(() => rollback.ledgerDirectionFor(loss)).toThrow(
       'ROLLBACK cannot reference LOSS',
     );
   });
 
   it('should rehydrate a processed transaction', () => {
-    const createdAt =
-      new Date('2026-09-01T12:00:00.000Z');
+    const createdAt = new Date('2026-09-01T12:00:00.000Z');
 
-    const processedAt =
-      new Date('2026-09-01T12:01:00.000Z');
+    const processedAt = new Date('2026-09-01T12:01:00.000Z');
 
     const state: WagerTransactionState = {
-      id: WagerTransactionId.from(
-        'internal-transaction-id',
-      ),
+      id: WagerTransactionId.from('internal-transaction-id'),
 
       providerId: 'provider-a',
 
-      externalTransactionId:
-        'refund-123',
+      externalTransactionId: 'refund-123',
 
-      idempotencyKey:
-        'provider-a:refund-123',
+      idempotencyKey: 'provider-a:refund-123',
 
-      payloadHash:
-        'persisted-payload-hash',
+      payloadHash: 'persisted-payload-hash',
 
-      walletId:
-        WalletId.from('wallet-123'),
+      walletId: WalletId.from('wallet-123'),
 
       playerId: 'player-123',
 
@@ -715,24 +535,20 @@ describe('WagerTransaction', () => {
 
       gameId: 'game-123',
 
-      kind:
-        WagerTransactionKind.Refund,
+      kind: WagerTransactionKind.Refund,
 
       money: Money.from({
         amount: '25.00',
         currency: 'BRL',
       }),
 
-      referenceExternalTransactionId:
-        'original-bet',
+      referenceExternalTransactionId: 'original-bet',
 
       createdAt,
 
-      status:
-        WagerTransactionStatus.Processed,
+      status: WagerTransactionStatus.Processed,
 
-      referenceTransactionId:
-        'internal-bet-id',
+      referenceTransactionId: 'internal-bet-id',
 
       processedAt,
 
@@ -742,57 +558,36 @@ describe('WagerTransaction', () => {
       }),
     };
 
-    const transaction =
-      WagerTransaction.rehydrate(state);
+    const transaction = WagerTransaction.rehydrate(state);
 
-    expect(
-      transaction.id.toString(),
-    ).toBe('internal-transaction-id');
+    expect(transaction.id.toString()).toBe('internal-transaction-id');
 
-    expect(transaction.status).toBe(
-      WagerTransactionStatus.Processed,
-    );
+    expect(transaction.status).toBe(WagerTransactionStatus.Processed);
 
-    expect(
-      transaction.referenceTransactionId,
-    ).toBe('internal-bet-id');
+    expect(transaction.referenceTransactionId).toBe('internal-bet-id');
 
-    expect(
-      transaction.createdAt,
-    ).toEqual(createdAt);
+    expect(transaction.createdAt).toEqual(createdAt);
 
-    expect(
-      transaction.processedAt,
-    ).toEqual(processedAt);
+    expect(transaction.processedAt).toEqual(processedAt);
 
-    expect(
-      transaction.resultingBalance?.toString(),
-    ).toBe('75.00');
+    expect(transaction.resultingBalance?.toString()).toBe('75.00');
 
-    expect(
-      transaction.isTerminal(),
-    ).toBe(true);
+    expect(transaction.isTerminal()).toBe(true);
   });
 
   it('should rehydrate a rejected transaction with its failure code', () => {
     const state: WagerTransactionState = {
-      id: WagerTransactionId.from(
-        'rejected-transaction-id',
-      ),
+      id: WagerTransactionId.from('rejected-transaction-id'),
 
       providerId: 'provider-a',
 
-      externalTransactionId:
-        'bet-123',
+      externalTransactionId: 'bet-123',
 
-      idempotencyKey:
-        'provider-a:bet-123',
+      idempotencyKey: 'provider-a:bet-123',
 
-      payloadHash:
-        'persisted-payload-hash',
+      payloadHash: 'persisted-payload-hash',
 
-      walletId:
-        WalletId.from('wallet-123'),
+      walletId: WalletId.from('wallet-123'),
 
       playerId: 'player-123',
 
@@ -800,24 +595,18 @@ describe('WagerTransaction', () => {
 
       gameId: 'game-123',
 
-      kind:
-        WagerTransactionKind.Bet,
+      kind: WagerTransactionKind.Bet,
 
       money: Money.from({
         amount: '80.00',
         currency: 'BRL',
       }),
 
-      createdAt:
-        new Date(
-          '2026-09-01T12:00:00.000Z',
-        ),
+      createdAt: new Date('2026-09-01T12:00:00.000Z'),
 
-      status:
-        WagerTransactionStatus.Rejected,
+      status: WagerTransactionStatus.Rejected,
 
-      failureCode:
-        WagerFailureCode.InsufficientFunds,
+      failureCode: WagerFailureCode.InsufficientFunds,
 
       resultingBalance: Money.from({
         amount: '20.00',
@@ -825,55 +614,36 @@ describe('WagerTransaction', () => {
       }),
     };
 
-    const transaction =
-      WagerTransaction.rehydrate(state);
+    const transaction = WagerTransaction.rehydrate(state);
 
-    expect(transaction.status).toBe(
-      WagerTransactionStatus.Rejected,
-    );
+    expect(transaction.status).toBe(WagerTransactionStatus.Rejected);
 
-    expect(
-      transaction.failureCode,
-    ).toBe(
-      WagerFailureCode.InsufficientFunds,
-    );
+    expect(transaction.failureCode).toBe(WagerFailureCode.InsufficientFunds);
 
-    expect(
-      transaction.resultingBalance?.toString(),
-    ).toBe('20.00');
+    expect(transaction.resultingBalance?.toString()).toBe('20.00');
 
-    expect(
-      transaction.isTerminal(),
-    ).toBe(true);
+    expect(transaction.isTerminal()).toBe(true);
   });
 
   it('should accept a processed bet as refund reference', () => {
     const bet = processTransaction(
       WagerTransaction.create(
         makeProps({
-          externalTransactionId:
-            'bet-123',
+          externalTransactionId: 'bet-123',
         }),
       ),
     );
 
-    const refund =
-      createReversal(
-        WagerTransactionKind.Refund,
-        bet,
-      );
+    const refund = createReversal(WagerTransactionKind.Refund, bet);
 
-    expect(() =>
-      refund.assertValidReference(bet),
-    ).not.toThrow();
+    expect(() => refund.assertValidReference(bet)).not.toThrow();
   });
 
   it('should accept bet, win and refund as rollback references', () => {
     const bet = processTransaction(
       WagerTransaction.create(
         makeProps({
-          externalTransactionId:
-            'bet-123',
+          externalTransactionId: 'bet-123',
         }),
       ),
     );
@@ -881,11 +651,9 @@ describe('WagerTransaction', () => {
     const win = processTransaction(
       WagerTransaction.create(
         makeProps({
-          externalTransactionId:
-            'win-123',
+          externalTransactionId: 'win-123',
 
-          kind:
-            WagerTransactionKind.Win,
+          kind: WagerTransactionKind.Win,
         }),
       ),
     );
@@ -893,30 +661,25 @@ describe('WagerTransaction', () => {
     const refund = processTransaction(
       WagerTransaction.create(
         makeProps({
-          externalTransactionId:
-            'refund-123',
+          externalTransactionId: 'refund-123',
 
-          kind:
-            WagerTransactionKind.Refund,
+          kind: WagerTransactionKind.Refund,
 
-          referenceExternalTransactionId:
-            'bet-123',
+          referenceExternalTransactionId: 'bet-123',
         }),
       ),
     );
 
     expect(() =>
-      createReversal(
-        WagerTransactionKind.Rollback,
+      createReversal(WagerTransactionKind.Rollback, bet).assertValidReference(
         bet,
-      ).assertValidReference(bet),
+      ),
     ).not.toThrow();
 
     expect(() =>
-      createReversal(
-        WagerTransactionKind.Rollback,
+      createReversal(WagerTransactionKind.Rollback, win).assertValidReference(
         win,
-      ).assertValidReference(win),
+      ),
     ).not.toThrow();
 
     expect(() =>
@@ -928,95 +691,74 @@ describe('WagerTransaction', () => {
   });
 
   it('should reject a missing reference', () => {
-    const refund =
-      WagerTransaction.create(
-        makeProps({
-          kind:
-            WagerTransactionKind.Refund,
+    const refund = WagerTransaction.create(
+      makeProps({
+        kind: WagerTransactionKind.Refund,
 
-          referenceExternalTransactionId:
-            'missing-bet',
-        }),
-      );
+        referenceExternalTransactionId: 'missing-bet',
+      }),
+    );
 
     expectReferenceFailure(
-      () =>
-        refund.assertValidReference(
-          undefined,
-        ),
+      () => refund.assertValidReference(undefined),
 
       WagerFailureCode.ReferenceNotFound,
     );
   });
 
   it('should reject a reference from a different scope', () => {
-    const walletId =
-      WalletId.create();
+    const walletId = WalletId.create();
 
-    const refund =
-      WagerTransaction.create(
-        makeProps({
-          walletId,
+    const refund = WagerTransaction.create(
+      makeProps({
+        walletId,
 
-          kind:
-            WagerTransactionKind.Refund,
+        kind: WagerTransactionKind.Refund,
 
-          referenceExternalTransactionId:
-            'bet-123',
+        referenceExternalTransactionId: 'bet-123',
+      }),
+    );
+
+    const mismatches: Partial<CreateWagerTransactionProps>[] = [
+      {
+        providerId: 'provider-b',
+      },
+
+      {
+        playerId: 'different-player',
+      },
+
+      {
+        walletId: WalletId.create(),
+      },
+
+      {
+        roundId: 'different-round',
+      },
+
+      {
+        money: Money.from({
+          amount: '25.00',
+          currency: 'USD',
         }),
+      },
+    ];
+
+    for (const mismatch of mismatches) {
+      const reference = processTransaction(
+        WagerTransaction.create(
+          makeProps({
+            walletId,
+
+            externalTransactionId: 'bet-123',
+
+            ...mismatch,
+          }),
+        ),
       );
 
-    const mismatches:
-      Partial<CreateWagerTransactionProps>[] = [
-        {
-          providerId: 'provider-b',
-        },
-
-        {
-          playerId:
-            'different-player',
-        },
-
-        {
-          walletId:
-            WalletId.create(),
-        },
-
-        {
-          roundId:
-            'different-round',
-        },
-
-        {
-          money: Money.from({
-            amount: '25.00',
-            currency: 'USD',
-          }),
-        },
-      ];
-
-    for (
-      const mismatch of mismatches
-    ) {
-      const reference =
-        processTransaction(
-          WagerTransaction.create(
-            makeProps({
-              walletId,
-
-              externalTransactionId:
-                'bet-123',
-
-              ...mismatch,
-            }),
-          ),
-        );
-
       expectReferenceFailure(
-        () =>
-          refund.assertValidReference(
-            reference,
-          ),
+        () => refund.assertValidReference(reference),
 
         WagerFailureCode.ReferenceScopeMismatch,
       );
@@ -1024,99 +766,72 @@ describe('WagerTransaction', () => {
   });
 
   it('should reject a reference with an invalid transaction kind', () => {
-    const loss =
-      processTransaction(
-        WagerTransaction.create(
-          makeProps({
-            externalTransactionId:
-              'loss-123',
+    const loss = processTransaction(
+      WagerTransaction.create(
+        makeProps({
+          externalTransactionId: 'loss-123',
 
-            kind:
-              WagerTransactionKind.Loss,
-          }),
-        ),
-      );
+          kind: WagerTransactionKind.Loss,
+        }),
+      ),
+    );
 
-    const refund =
-      createReversal(
-        WagerTransactionKind.Refund,
-        loss,
-      );
+    const refund = createReversal(WagerTransactionKind.Refund, loss);
 
     expectReferenceFailure(
-      () =>
-        refund.assertValidReference(
-          loss,
-        ),
+      () => refund.assertValidReference(loss),
 
       WagerFailureCode.InvalidReferenceType,
     );
   });
 
   it('should reject a reference that has not been processed', () => {
-    const pendingBet =
-      WagerTransaction.create(
-        makeProps({
-          externalTransactionId:
-            'bet-123',
-        }),
-      );
+    const pendingBet = WagerTransaction.create(
+      makeProps({
+        externalTransactionId: 'bet-123',
+      }),
+    );
 
-    const refund =
-      createReversal(
-        WagerTransactionKind.Refund,
-        pendingBet,
-      );
+    const refund = createReversal(WagerTransactionKind.Refund, pendingBet);
 
     expectReferenceFailure(
-      () =>
-        refund.assertValidReference(
-          pendingBet,
-        ),
+      () => refund.assertValidReference(pendingBet),
 
       WagerFailureCode.ReferenceNotProcessed,
     );
   });
 
   it('should reject a reference with a different amount', () => {
-    const bet =
-      processTransaction(
-        WagerTransaction.create(
-          makeProps({
-            externalTransactionId:
-              'bet-123',
-
-            money: Money.from({
-              amount: '10.00',
-              currency: 'BRL',
-            }),
-          }),
-        ),
-      );
-
-    const refund =
+    const bet = processTransaction(
       WagerTransaction.create(
         makeProps({
-          walletId: bet.walletId,
-
-          kind:
-            WagerTransactionKind.Refund,
+          externalTransactionId: 'bet-123',
 
           money: Money.from({
-            amount: '25.00',
+            amount: '10.00',
             currency: 'BRL',
           }),
-
-          referenceExternalTransactionId:
-            bet.externalTransactionId,
         }),
-      );
+      ),
+    );
+
+    const refund = WagerTransaction.create(
+      makeProps({
+        walletId: bet.walletId,
+
+        kind: WagerTransactionKind.Refund,
+
+        money: Money.from({
+          amount: '25.00',
+          currency: 'BRL',
+        }),
+
+        referenceExternalTransactionId: bet.externalTransactionId,
+      }),
+    );
 
     expectReferenceFailure(
-      () =>
-        refund.assertValidReference(
-          bet,
-        ),
+      () => refund.assertValidReference(bet),
 
       WagerFailureCode.ReferenceAmountMismatch,
     );

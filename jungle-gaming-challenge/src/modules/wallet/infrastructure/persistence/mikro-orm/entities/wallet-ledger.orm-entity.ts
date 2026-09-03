@@ -21,8 +21,7 @@ import { WalletOrmEntity } from './wallet.orm-entity.js';
 })
 @Check({
   name: 'wallet_ledger_balances_non_negative_check',
-  expression:
-    'balance_before >= 0 AND balance_after >= 0',
+  expression: 'balance_before >= 0 AND balance_after >= 0',
 })
 @Check({
   name: 'wallet_ledger_balanced_check',

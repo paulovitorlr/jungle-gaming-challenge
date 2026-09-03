@@ -2,9 +2,7 @@ import { InboxMessage } from '../../../../domain/entities/inbox-message.js';
 import { InboxMessageOrmEntity } from '../entities/inbox-message.orm-entity.js';
 
 export class InboxMessageMapper {
-  static toPersistence(
-    message: InboxMessage,
-  ): InboxMessageOrmEntity {
+  static toPersistence(message: InboxMessage): InboxMessageOrmEntity {
     const entity = new InboxMessageOrmEntity();
 
     entity.consumerName = message.consumerName;
@@ -16,9 +14,7 @@ export class InboxMessageMapper {
     return entity;
   }
 
-  static toDomain(
-    entity: InboxMessageOrmEntity,
-  ): InboxMessage {
+  static toDomain(entity: InboxMessageOrmEntity): InboxMessage {
     return InboxMessage.rehydrate({
       consumerName: entity.consumerName,
       messageId: entity.messageId,

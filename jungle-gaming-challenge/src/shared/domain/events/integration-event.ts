@@ -1,6 +1,4 @@
-export type IntegrationEventProps<
-  T extends object,
-> = {
+export type IntegrationEventProps<T extends object> = {
   eventId: string;
   aggregateId: string;
   correlationId: string;
@@ -9,9 +7,7 @@ export type IntegrationEventProps<
   data: T;
 };
 
-export type IntegrationEventEnvelope<
-  T extends object,
-> = {
+export type IntegrationEventEnvelope<T extends object> = {
   eventId: string;
   eventType: string;
   aggregateId: string;
@@ -22,9 +18,7 @@ export type IntegrationEventEnvelope<
   data: Readonly<T>;
 };
 
-export abstract class IntegrationEvent<
-  T extends object,
-> {
+export abstract class IntegrationEvent<T extends object> {
   abstract readonly eventType: string;
   abstract readonly version: number;
 
@@ -35,13 +29,8 @@ export abstract class IntegrationEvent<
   readonly occurredAt: Date;
   readonly data: Readonly<T>;
 
-  protected constructor(
-    props: IntegrationEventProps<T>,
-  ) {
-    IntegrationEvent.assertRequired(
-      props.eventId,
-      'Event id is required',
-    );
+  protected constructor(props: IntegrationEventProps<T>) {
+    IntegrationEvent.assertRequired(props.eventId, 'Event id is required');
 
     IntegrationEvent.assertRequired(
       props.aggregateId,
@@ -53,24 +42,15 @@ export abstract class IntegrationEvent<
       'Correlation id is required',
     );
 
-    if (
-      Number.isNaN(
-        props.occurredAt.getTime(),
-      )
-    ) {
-      throw new Error(
-        'Occurred at must be a valid date',
-      );
+    if (Number.isNaN(props.occurredAt.getTime())) {
+      throw new Error('Occurred at must be a valid date');
     }
 
     this.eventId = props.eventId;
     this.aggregateId = props.aggregateId;
-    this.correlationId =
-      props.correlationId;
+    this.correlationId = props.correlationId;
     this.causationId = props.causationId;
-    this.occurredAt = new Date(
-      props.occurredAt,
-    );
+    this.occurredAt = new Date(props.occurredAt);
 
     this.data = Object.freeze({
       ...props.data,
@@ -84,17 +64,13 @@ export abstract class IntegrationEvent<
       aggregateId: this.aggregateId,
       correlationId: this.correlationId,
       causationId: this.causationId,
-      occurredAt:
-        this.occurredAt.toISOString(),
+      occurredAt: this.occurredAt.toISOString(),
       version: this.version,
       data: this.data,
     };
   }
 
-  private static assertRequired(
-    value: string,
-    message: string,
-  ): void {
+  private static assertRequired(value: string, message: string): void {
     if (!value || value.trim().length === 0) {
       throw new Error(message);
     }

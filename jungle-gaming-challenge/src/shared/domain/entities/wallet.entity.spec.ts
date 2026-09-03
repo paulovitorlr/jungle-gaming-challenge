@@ -20,17 +20,17 @@ describe('Wallet', () => {
       Money.from({
         amount: '100.00',
         currency: 'BRL',
-    }),
-  );
+      }),
+    );
 
     expect(wallet.balance.toString()).toBe('100.00');
-  expect(wallet.version).toBe(2);
+    expect(wallet.version).toBe(2);
 
-  expect(entry.transactionId).toBe('transaction-1');
-  expect(entry.direction).toBe(LedgerDirection.Credit);
-  expect(entry.money.toString()).toBe('100.00');
-  expect(entry.balanceBefore.toString()).toBe('0.00');
-  expect(entry.balanceAfter.toString()).toBe('100.00');
+    expect(entry.transactionId).toBe('transaction-1');
+    expect(entry.direction).toBe(LedgerDirection.Credit);
+    expect(entry.money.toString()).toBe('100.00');
+    expect(entry.balanceBefore.toString()).toBe('0.00');
+    expect(entry.balanceAfter.toString()).toBe('100.00');
   });
 
   it('should debit wallet balance', () => {
@@ -44,7 +44,7 @@ describe('Wallet', () => {
       }),
     );
 
-    const entry =wallet.debit(
+    const entry = wallet.debit(
       'transaction-2',
       Money.from({
         amount: '25.00',
@@ -69,7 +69,7 @@ describe('Wallet', () => {
           currency: 'USD',
         }),
       ),
-).toThrow('Currency mismatch');
+    ).toThrow('Currency mismatch');
 
     expect(wallet.balance.toString()).toBe('0.00');
     expect(wallet.version).toBe(1);
@@ -86,18 +86,15 @@ describe('Wallet', () => {
           currency: 'USD',
         }),
       ),
-).toThrow('Currency mismatch');;
+    ).toThrow('Currency mismatch');
   });
 
   it('should reject zero amount', () => {
     const wallet = Wallet.open('player-123', 'BRL');
 
-      expect(() =>
-        wallet.credit(
-        'transaction-1',
-        Money.zero('BRL'),
-      ),
-    ).toThrow('Amount must be greater than zero');
+    expect(() => wallet.credit('transaction-1', Money.zero('BRL'))).toThrow(
+      'Amount must be greater than zero',
+    );
   });
 
   it('should increment version only when balance changes', () => {
@@ -117,13 +114,13 @@ describe('Wallet', () => {
 
     expect(() =>
       wallet.debit(
-      'transaction-2',
-      Money.from({
-        amount: '101.00',
-        currency: 'BRL',
-      }),
-    ),
-).toThrow('Insufficient balance');
+        'transaction-2',
+        Money.from({
+          amount: '101.00',
+          currency: 'BRL',
+        }),
+      ),
+    ).toThrow('Insufficient balance');
 
     expect(wallet.version).toBe(2);
   });

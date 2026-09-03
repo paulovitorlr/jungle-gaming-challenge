@@ -27,11 +27,8 @@ export type WagerTransactionRejectedData = {
   failureCode: WagerFailureCode;
 };
 
-export class WagerTransactionRejected
-  extends IntegrationEvent<WagerTransactionRejectedData>
-{
-  readonly eventType =
-    'WagerTransactionRejected';
+export class WagerTransactionRejected extends IntegrationEvent<WagerTransactionRejectedData> {
+  readonly eventType = 'WagerTransactionRejected';
 
   readonly version = 1;
 
@@ -45,51 +42,33 @@ export class WagerTransactionRejected
     transaction: WagerTransaction,
     context: EventContext,
   ): WagerTransactionRejected {
-    if (
-      transaction.status !==
-      WagerTransactionStatus.Rejected
-    ) {
-      throw new Error(
-        'Only rejected transactions can produce this event',
-      );
+    if (transaction.status !== WagerTransactionStatus.Rejected) {
+      throw new Error('Only rejected transactions can produce this event');
     }
 
-    if (
-      !transaction.failureCode ||
-      !transaction.resultingBalance
-    ) {
-      throw new Error(
-        'Rejected transaction must contain failure details',
-      );
+    if (!transaction.failureCode || !transaction.resultingBalance) {
+      throw new Error('Rejected transaction must contain failure details');
     }
 
     return new WagerTransactionRejected({
       eventId: randomUUID(),
-      aggregateId:
-        transaction.id.toString(),
-      correlationId:
-        context.correlationId,
+      aggregateId: transaction.id.toString(),
+      correlationId: context.correlationId,
       causationId: context.causationId,
-      occurredAt:
-        context.occurredAt ?? new Date(),
+      occurredAt: context.occurredAt ?? new Date(),
 
       data: {
-        transactionId:
-          transaction.id.toString(),
+        transactionId: transaction.id.toString(),
         providerId: transaction.providerId,
-        externalTransactionId:
-          transaction.externalTransactionId,
-        walletId:
-          transaction.walletId.toString(),
+        externalTransactionId: transaction.externalTransactionId,
+        walletId: transaction.walletId.toString(),
         playerId: transaction.playerId,
         roundId: transaction.roundId,
         gameId: transaction.gameId,
         kind: transaction.kind,
         money: transaction.money.toJSON(),
-        resultingBalance:
-          transaction.resultingBalance.toJSON(),
-        failureCode:
-          transaction.failureCode,
+        resultingBalance: transaction.resultingBalance.toJSON(),
+        failureCode: transaction.failureCode,
       },
     });
   }

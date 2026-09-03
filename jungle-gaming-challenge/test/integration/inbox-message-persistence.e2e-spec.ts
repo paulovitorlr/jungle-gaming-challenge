@@ -1,8 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  EntityManager,
-  MikroORM,
-} from '@mikro-orm/postgresql';
+import { EntityManager, MikroORM } from '@mikro-orm/postgresql';
 
 import { AppModule } from '../../src/app.module.js';
 
@@ -37,16 +34,11 @@ describe('InboxMessage persistence', () => {
 
     unitOfWork = moduleRef.get(UNIT_OF_WORK);
 
-    inboxRepository = moduleRef.get(
-      InboxMessageRepository,
-    );
+    inboxRepository = moduleRef.get(InboxMessageRepository);
   });
 
   beforeEach(async () => {
-    await entityManager.nativeDelete(
-      InboxMessageOrmEntity,
-      {},
-    );
+    await entityManager.nativeDelete(InboxMessageOrmEntity, {});
   });
 
   afterAll(async () => {
@@ -54,11 +46,9 @@ describe('InboxMessage persistence', () => {
   });
 
   it('should persist and retrieve a processed inbox message', async () => {
-    const receivedAt =
-      new Date('2026-09-02T12:00:00.000Z');
+    const receivedAt = new Date('2026-09-02T12:00:00.000Z');
 
-    const processedAt =
-      new Date('2026-09-02T12:01:00.000Z');
+    const processedAt = new Date('2026-09-02T12:01:00.000Z');
 
     const message = InboxMessage.receive({
       consumerName: 'wager-transaction-consumer',
@@ -73,24 +63,17 @@ describe('InboxMessage persistence', () => {
       await inboxRepository.add(message);
     });
 
-    const persisted = await unitOfWork.execute(
-      async () =>
-        inboxRepository.findByIdentity(
-          'wager-transaction-consumer',
-          'message-123',
-        ),
+    const persisted = await unitOfWork.execute(async () =>
+      inboxRepository.findByIdentity(
+        'wager-transaction-consumer',
+        'message-123',
+      ),
     );
 
     expect(persisted).not.toBeNull();
-    expect(persisted?.payloadHash).toBe(
-      'payload-hash',
-    );
-    expect(persisted?.receivedAt).toEqual(
-      receivedAt,
-    );
-    expect(persisted?.processedAt).toEqual(
-      processedAt,
-    );
+    expect(persisted?.payloadHash).toBe('payload-hash');
+    expect(persisted?.receivedAt).toEqual(receivedAt);
+    expect(persisted?.processedAt).toEqual(processedAt);
     expect(persisted?.isProcessed()).toBe(true);
   });
 
@@ -101,13 +84,11 @@ describe('InboxMessage persistence', () => {
       payloadHash: 'payload-hash',
     });
 
-    const duplicatedMessage =
-      InboxMessage.receive({
-        consumerName:
-          'wager-transaction-consumer',
-        messageId: 'duplicated-message',
-        payloadHash: 'payload-hash',
-      });
+    const duplicatedMessage = InboxMessage.receive({
+      consumerName: 'wager-transaction-consumer',
+      messageId: 'duplicated-message',
+      payloadHash: 'payload-hash',
+    });
 
     await unitOfWork.execute(async () => {
       await inboxRepository.add(firstMessage);
@@ -115,55 +96,37 @@ describe('InboxMessage persistence', () => {
 
     await expect(
       unitOfWork.execute(async () => {
-        await inboxRepository.add(
-          duplicatedMessage,
-        );
+        await inboxRepository.add(duplicatedMessage);
       }),
-    ).rejects.toBeInstanceOf(
-      UniqueConstraintViolationError,
-    );
+    ).rejects.toBeInstanceOf(UniqueConstraintViolationError);
   });
 
   it('should allow the same message for different consumers', async () => {
-    const firstConsumerMessage =
-      InboxMessage.receive({
-        consumerName: 'wager-consumer',
-        messageId: 'shared-message',
-        payloadHash: 'payload-hash',
-      });
-
-    const secondConsumerMessage =
-      InboxMessage.receive({
-        consumerName: 'audit-consumer',
-        messageId: 'shared-message',
-        payloadHash: 'payload-hash',
-      });
-
-    await unitOfWork.execute(async () => {
-      await inboxRepository.add(
-        firstConsumerMessage,
-      );
-
-      await inboxRepository.add(
-        secondConsumerMessage,
-      );
+    const firstConsumerMessage = InboxMessage.receive({
+      consumerName: 'wager-consumer',
+      messageId: 'shared-message',
+      payloadHash: 'payload-hash',
     });
 
-    const firstPersisted =
-      await unitOfWork.execute(async () =>
-        inboxRepository.findByIdentity(
-          'wager-consumer',
-          'shared-message',
-        ),
-      );
+    const secondConsumerMessage = InboxMessage.receive({
+      consumerName: 'audit-consumer',
+      messageId: 'shared-message',
+      payloadHash: 'payload-hash',
+    });
 
-    const secondPersisted =
-      await unitOfWork.execute(async () =>
-        inboxRepository.findByIdentity(
-          'audit-consumer',
-          'shared-message',
-        ),
-      );
+    await unitOfWork.execute(async () => {
+      await inboxRepository.add(firstConsumerMessage);
+
+      await inboxRepository.add(secondConsumerMessage);
+    });
+
+    const firstPersisted = await unitOfWork.execute(async () =>
+      inboxRepository.findByIdentity('wager-consumer', 'shared-message'),
+    );
+
+    const secondPersisted = await unitOfWork.execute(async () =>
+      inboxRepository.findByIdentity('audit-consumer', 'shared-message'),
+    );
 
     expect(firstPersisted).not.toBeNull();
     expect(secondPersisted).not.toBeNull();

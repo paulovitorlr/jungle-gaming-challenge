@@ -22,8 +22,7 @@ import { InboxPayloadConflictError } from '../errors/inbox-payload-conflict.erro
 
 import type { WagerTransactionRequestedMessage } from '../contracts/wager-transaction-requested.message.js';
 
-const CONSUMER_NAME =
-  'wager-transaction-consumer';
+const CONSUMER_NAME = 'wager-transaction-consumer';
 
 export type ProcessWagerMessageOutput = {
   duplicateMessage: boolean;
@@ -33,11 +32,9 @@ export type ProcessWagerMessageOutput = {
 @Injectable()
 export class ProcessWagerMessageUseCase {
   constructor(
-    private readonly inboxRepository:
-      InboxMessageRepository,
+    private readonly inboxRepository: InboxMessageRepository,
 
-    private readonly processWagerTransaction:
-      ProcessWagerTransactionUseCase,
+    private readonly processWagerTransaction: ProcessWagerTransactionUseCase,
 
     @Inject(UNIT_OF_WORK)
     private readonly unitOfWork: UnitOfWork,
@@ -46,115 +43,82 @@ export class ProcessWagerMessageUseCase {
   async execute(
     message: WagerTransactionRequestedMessage,
   ): Promise<ProcessWagerMessageOutput> {
-    const payloadHash = this.calculatePayloadHash(
-      message.data,
-    );
+    const payloadHash = this.calculatePayloadHash(message.data);
 
     try {
-      return await this.unitOfWork.execute(
-        async () => {
-          const existing =
-            await this.inboxRepository.findByIdentity(
-              CONSUMER_NAME,
-              message.messageId,
-            );
+      return await this.unitOfWork.execute(async () => {
+        const existing = await this.inboxRepository.findByIdentity(
+          CONSUMER_NAME,
+          message.messageId,
+        );
 
-          if (existing) {
-            return this.resolveExisting(
-              existing,
-              payloadHash,
-            );
-          }
+        if (existing) {
+          return this.resolveExisting(existing, payloadHash);
+        }
 
-          const inboxMessage =
-            InboxMessage.receive({
-              consumerName: CONSUMER_NAME,
-              messageId: message.messageId,
-              payloadHash,
-            });
+        const inboxMessage = InboxMessage.receive({
+          consumerName: CONSUMER_NAME,
+          messageId: message.messageId,
+          payloadHash,
+        });
 
-          const wager =
-            await this.processWagerTransaction.execute({
-              providerId:
-                message.data.providerId,
+        const wager = await this.processWagerTransaction.execute({
+          providerId: message.data.providerId,
 
-              externalTransactionId:
-                message.data.externalTransactionId,
+          externalTransactionId: message.data.externalTransactionId,
 
-              idempotencyKey:
-                message.data.idempotencyKey,
+          idempotencyKey: message.data.idempotencyKey,
 
-              payloadHash,
+          payloadHash,
 
-              walletId:
-                message.data.walletId,
+          walletId: message.data.walletId,
 
-              playerId:
-                message.data.playerId,
+          playerId: message.data.playerId,
 
-              roundId:
-                message.data.roundId,
+          roundId: message.data.roundId,
 
-              gameId:
-                message.data.gameId,
+          gameId: message.data.gameId,
 
-              kind:
-                message.data.kind,
+          kind: message.data.kind,
 
-              amount:
-                message.data.money.amount,
+          amount: message.data.money.amount,
 
-              currency:
-                message.data.money.currency,
+          currency: message.data.money.currency,
 
-              referenceExternalTransactionId:
-                message.data
-                  .referenceExternalTransactionId,
-            });
+          referenceExternalTransactionId:
+            message.data.referenceExternalTransactionId,
+        });
 
-          inboxMessage.markProcessed(
-            new Date(),
-          );
+        inboxMessage.markProcessed(new Date());
 
-          await this.inboxRepository.add(
-            inboxMessage,
-          );
+        await this.inboxRepository.add(inboxMessage);
 
-          return {
-            duplicateMessage: false,
-            wager,
-          };
-        },
-      );
+        return {
+          duplicateMessage: false,
+          wager,
+        };
+      });
     } catch (error) {
       const isInboxRace =
-        error instanceof
-          UniqueConstraintViolationError &&
-        error.constraint ===
-          'inbox_messages_pkey';
+        error instanceof UniqueConstraintViolationError &&
+        error.constraint === 'inbox_messages_pkey';
 
       if (!isInboxRace) {
         throw error;
       }
 
-      return this.unitOfWork.execute(
-        async () => {
-          const existing =
-            await this.inboxRepository.findByIdentity(
-              CONSUMER_NAME,
-              message.messageId,
-            );
+      return this.unitOfWork.execute(async () => {
+        const existing = await this.inboxRepository.findByIdentity(
+          CONSUMER_NAME,
+          message.messageId,
+        );
 
-          if (!existing) {
-            throw error;
-          }
+        if (!existing) {
+          throw error;
+        }
 
-          return this.resolveExisting(
-            existing,
-            payloadHash,
-          );
-        },
-      );
+        return this.resolveExisting(existing, payloadHash);
+      });
     }
   }
 
@@ -162,16 +126,12 @@ export class ProcessWagerMessageUseCase {
     existing: InboxMessage,
     payloadHash: string,
   ): ProcessWagerMessageOutput {
-    if (
-      !existing.matchesPayload(payloadHash)
-    ) {
+    if (!existing.matchesPayload(payloadHash)) {
       throw new InboxPayloadConflictError();
     }
 
     if (!existing.isProcessed()) {
-      throw new Error(
-        'Inbox message exists but was not processed',
-      );
+      throw new Error('Inbox message exists but was not processed');
     }
 
     return {
@@ -179,9 +139,7 @@ export class ProcessWagerMessageUseCase {
     };
   }
 
-  private calculatePayloadHash(
-    payload: unknown,
-  ): string {
+  private calculatePayloadHash(payload: unknown): string {
     return createHash('sha256')
       .update(this.canonicalize(payload))
       .digest('hex');
@@ -189,29 +147,17 @@ export class ProcessWagerMessageUseCase {
 
   private canonicalize(value: unknown): string {
     if (Array.isArray(value)) {
-      return `[${value
-        .map((item) => this.canonicalize(item))
-        .join(',')}]`;
+      return `[${value.map((item) => this.canonicalize(item)).join(',')}]`;
     }
 
-    if (
-      value !== null &&
-      typeof value === 'object'
-    ) {
-      const record =
-        value as Record<string, unknown>;
+    if (value !== null && typeof value === 'object') {
+      const record = value as Record<string, unknown>;
 
       const properties = Object.keys(record)
-        .filter(
-          (key) =>
-            record[key] !== undefined,
-        )
+        .filter((key) => record[key] !== undefined)
         .sort()
         .map(
-          (key) =>
-            `${JSON.stringify(key)}:${this.canonicalize(
-              record[key],
-            )}`,
+          (key) => `${JSON.stringify(key)}:${this.canonicalize(record[key])}`,
         );
 
       return `{${properties.join(',')}}`;

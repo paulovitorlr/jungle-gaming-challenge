@@ -11,75 +11,56 @@ describe('MikroOrmInboxMessageRepository', () => {
       flush: vi.fn(),
     };
 
-    const repository =
-      new MikroOrmInboxMessageRepository(
-        entityManager as unknown as EntityManager,
-      );
+    const repository = new MikroOrmInboxMessageRepository(
+      entityManager as unknown as EntityManager,
+    );
 
     const message = InboxMessage.receive({
       consumerName: 'wager-transaction-consumer',
       messageId: 'message-123',
       payloadHash: 'payload-hash',
-      receivedAt:
-        new Date('2026-09-02T12:00:00.000Z'),
+      receivedAt: new Date('2026-09-02T12:00:00.000Z'),
     });
 
     await repository.add(message);
 
-    expect(
-      entityManager.persist,
-    ).toHaveBeenCalledOnce();
+    expect(entityManager.persist).toHaveBeenCalledOnce();
 
-    const persisted =
-      entityManager.persist.mock.calls[0][0];
+    const persisted = entityManager.persist.mock.calls[0][0];
 
-    expect(persisted).toBeInstanceOf(
-      InboxMessageOrmEntity,
-    );
-    expect(persisted.consumerName).toBe(
-      'wager-transaction-consumer',
-    );
+    expect(persisted).toBeInstanceOf(InboxMessageOrmEntity);
+    expect(persisted.consumerName).toBe('wager-transaction-consumer');
     expect(persisted.messageId).toBe('message-123');
 
-    expect(
-      entityManager.flush,
-    ).not.toHaveBeenCalled();
+    expect(entityManager.flush).not.toHaveBeenCalled();
   });
 
   it('should find an inbox message by its identity', async () => {
     const entity = new InboxMessageOrmEntity();
 
-    entity.consumerName =
-      'wager-transaction-consumer';
+    entity.consumerName = 'wager-transaction-consumer';
     entity.messageId = 'message-123';
     entity.payloadHash = 'payload-hash';
-    entity.receivedAt =
-      new Date('2026-09-02T12:00:00.000Z');
-    entity.processedAt =
-      new Date('2026-09-02T12:01:00.000Z');
+    entity.receivedAt = new Date('2026-09-02T12:00:00.000Z');
+    entity.processedAt = new Date('2026-09-02T12:01:00.000Z');
 
     const entityManager = {
       findOne: vi.fn().mockResolvedValue(entity),
     };
 
-    const repository =
-      new MikroOrmInboxMessageRepository(
-        entityManager as unknown as EntityManager,
-      );
+    const repository = new MikroOrmInboxMessageRepository(
+      entityManager as unknown as EntityManager,
+    );
 
     const result = await repository.findByIdentity(
       'wager-transaction-consumer',
       'message-123',
     );
 
-    expect(entityManager.findOne).toHaveBeenCalledWith(
-      InboxMessageOrmEntity,
-      {
-        consumerName:
-          'wager-transaction-consumer',
-        messageId: 'message-123',
-      },
-    );
+    expect(entityManager.findOne).toHaveBeenCalledWith(InboxMessageOrmEntity, {
+      consumerName: 'wager-transaction-consumer',
+      messageId: 'message-123',
+    });
 
     expect(result?.messageId).toBe('message-123');
     expect(result?.isProcessed()).toBe(true);
@@ -90,10 +71,9 @@ describe('MikroOrmInboxMessageRepository', () => {
       findOne: vi.fn().mockResolvedValue(null),
     };
 
-    const repository =
-      new MikroOrmInboxMessageRepository(
-        entityManager as unknown as EntityManager,
-      );
+    const repository = new MikroOrmInboxMessageRepository(
+      entityManager as unknown as EntityManager,
+    );
 
     const result = await repository.findByIdentity(
       'wager-transaction-consumer',

@@ -1,16 +1,21 @@
 import { OutboxMessage } from '../entities/outbox-message.js';
 
-export abstract class OutboxMessageRepository {
-  abstract add(
-    message: OutboxMessage,
-  ): Promise<void>;
+export type ClaimOutboxMessagesOptions = {
+  now: Date;
+  limit: number;
+  lockId: string;
+  lockedUntil: Date;
+};
 
-  abstract findDueForPublishing(
-    now: Date,
-    limit: number,
+export abstract class OutboxMessageRepository {
+  abstract add(message: OutboxMessage): Promise<void>;
+
+  abstract claimDueForPublishing(
+    options: ClaimOutboxMessagesOptions,
   ): Promise<OutboxMessage[]>;
 
-  abstract update(
+  abstract updateClaimed(
     message: OutboxMessage,
-  ): Promise<void>;
+    lockId: string,
+  ): Promise<boolean>;
 }

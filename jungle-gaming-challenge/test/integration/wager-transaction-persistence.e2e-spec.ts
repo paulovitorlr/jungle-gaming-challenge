@@ -1,8 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  EntityManager,
-  MikroORM,
-} from '@mikro-orm/postgresql';
+import { EntityManager, MikroORM } from '@mikro-orm/postgresql';
 
 import {
   UNIT_OF_WORK,
@@ -49,43 +46,26 @@ describe('WagerTransaction persistence', () => {
 
     entityManager = orm.em.fork();
 
-    unitOfWork = moduleRef.get(
-      UNIT_OF_WORK,
-    );
+    unitOfWork = moduleRef.get(UNIT_OF_WORK);
 
-    walletRepository = moduleRef.get(
-      WALLET_REPOSITORY,
-    );
+    walletRepository = moduleRef.get(WALLET_REPOSITORY);
 
-    wagerTransactionRepository = moduleRef.get(
-      WagerTransactionRepository,
-    );
+    wagerTransactionRepository = moduleRef.get(WagerTransactionRepository);
   });
 
   beforeEach(async () => {
-    await entityManager.nativeDelete(
-      WagerTransactionOrmEntity,
-      {},
-    );
+    await entityManager.nativeDelete(WagerTransactionOrmEntity, {});
 
-    await entityManager.nativeDelete(
-      WalletLedgerOrmEntity,
-      {},
-    );
+    await entityManager.nativeDelete(WalletLedgerOrmEntity, {});
 
-    await entityManager.nativeDelete(
-      WalletOrmEntity,
-      {},
-    );
+    await entityManager.nativeDelete(WalletOrmEntity, {});
   });
 
   afterAll(async () => {
     await moduleRef.close();
   });
 
-  async function persistWallet(
-    walletId: WalletId,
-  ): Promise<void> {
+  async function persistWallet(walletId: WalletId): Promise<void> {
     const now = new Date();
 
     const wallet = Wallet.rehydrate({
@@ -126,81 +106,60 @@ describe('WagerTransaction persistence', () => {
       await walletRepository.add(wallet);
     });
 
-    const transaction =
-      WagerTransaction.create({
-        providerId: 'provider-a',
-        externalTransactionId:
-          'transaction-123',
-        idempotencyKey:
-          'provider-a:transaction-123',
-        payloadHash: 'hash-123',
-        walletId,
-        playerId: 'player-123',
-        roundId: 'round-123',
-        gameId: 'game-123',
-        kind: WagerTransactionKind.Bet,
-        money: Money.from({
-          amount: '25.00',
-          currency: 'BRL',
-        }),
-      });
+    const transaction = WagerTransaction.create({
+      providerId: 'provider-a',
+      externalTransactionId: 'transaction-123',
+      idempotencyKey: 'provider-a:transaction-123',
+      payloadHash: 'hash-123',
+      walletId,
+      playerId: 'player-123',
+      roundId: 'round-123',
+      gameId: 'game-123',
+      kind: WagerTransactionKind.Bet,
+      money: Money.from({
+        amount: '25.00',
+        currency: 'BRL',
+      }),
+    });
 
     await unitOfWork.execute(async () => {
-      await wagerTransactionRepository.save(
-        transaction,
-      );
+      await wagerTransactionRepository.save(transaction);
     });
 
-    const {
-      byId,
-      byIdempotencyKey,
-      byProviderAndExternal,
-    } = await unitOfWork.execute(async () => {
-      const byId =
-        await wagerTransactionRepository.findById(
-          transaction.id,
-        );
+    const { byId, byIdempotencyKey, byProviderAndExternal } =
+      await unitOfWork.execute(async () => {
+        const byId = await wagerTransactionRepository.findById(transaction.id);
 
-      const byIdempotencyKey =
-        await wagerTransactionRepository.findByIdempotencyKey(
-          transaction.providerId,
-          transaction.idempotencyKey,
-        );
+        const byIdempotencyKey =
+          await wagerTransactionRepository.findByIdempotencyKey(
+            transaction.providerId,
+            transaction.idempotencyKey,
+          );
 
-      const byProviderAndExternal =
-        await wagerTransactionRepository.findByProviderAndExternalTransactionId(
-          transaction.providerId,
-          transaction.externalTransactionId,
-        );
+        const byProviderAndExternal =
+          await wagerTransactionRepository.findByProviderAndExternalTransactionId(
+            transaction.providerId,
+            transaction.externalTransactionId,
+          );
 
-      return {
-        byId,
-        byIdempotencyKey,
-        byProviderAndExternal,
-      };
-    });
+        return {
+          byId,
+          byIdempotencyKey,
+          byProviderAndExternal,
+        };
+      });
 
     expect(byId).not.toBeNull();
 
-    expect(
-      byId?.id.equals(transaction.id),
-    ).toBe(true);
+    expect(byId?.id.equals(transaction.id)).toBe(true);
 
     expect(byIdempotencyKey).not.toBeNull();
 
-    expect(
-      byIdempotencyKey?.id.equals(
-        transaction.id,
-      ),
-    ).toBe(true);
+    expect(byIdempotencyKey?.id.equals(transaction.id)).toBe(true);
 
     expect(byProviderAndExternal).not.toBeNull();
 
-    expect(
-      byProviderAndExternal?.id.equals(
-        transaction.id,
-      ),
-    ).toBe(true);
+    expect(byProviderAndExternal?.id.equals(transaction.id)).toBe(true);
   });
 
   it('should reject duplicated idempotency key for the same provider', async () => {
@@ -240,16 +199,12 @@ describe('WagerTransaction persistence', () => {
     });
 
     await unitOfWork.execute(async () => {
-      await wagerTransactionRepository.save(
-        firstTransaction,
-      );
+      await wagerTransactionRepository.save(firstTransaction);
     });
 
     await expect(
       unitOfWork.execute(async () => {
-        await wagerTransactionRepository.save(
-          secondTransaction,
-        );
+        await wagerTransactionRepository.save(secondTransaction);
       }),
     ).rejects.toThrow();
   });
@@ -291,13 +246,9 @@ describe('WagerTransaction persistence', () => {
     });
 
     await unitOfWork.execute(async () => {
-      await wagerTransactionRepository.save(
-        firstTransaction,
-      );
+      await wagerTransactionRepository.save(firstTransaction);
 
-      await wagerTransactionRepository.save(
-        secondTransaction,
-      );
+      await wagerTransactionRepository.save(secondTransaction);
     });
   });
 
@@ -338,16 +289,12 @@ describe('WagerTransaction persistence', () => {
     });
 
     await unitOfWork.execute(async () => {
-      await wagerTransactionRepository.save(
-        firstTransaction,
-      );
+      await wagerTransactionRepository.save(firstTransaction);
     });
 
     await expect(
       unitOfWork.execute(async () => {
-        await wagerTransactionRepository.save(
-          secondTransaction,
-        );
+        await wagerTransactionRepository.save(secondTransaction);
       }),
     ).rejects.toThrow();
   });
@@ -389,13 +336,9 @@ describe('WagerTransaction persistence', () => {
     });
 
     await unitOfWork.execute(async () => {
-      await wagerTransactionRepository.save(
-        firstTransaction,
-      );
+      await wagerTransactionRepository.save(firstTransaction);
 
-      await wagerTransactionRepository.save(
-        secondTransaction,
-      );
+      await wagerTransactionRepository.save(secondTransaction);
     });
   });
 });

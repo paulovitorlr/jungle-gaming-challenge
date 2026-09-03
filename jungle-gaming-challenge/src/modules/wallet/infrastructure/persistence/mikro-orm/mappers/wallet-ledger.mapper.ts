@@ -4,9 +4,7 @@ import { WalletLedgerEntry } from '../../../../domain/entities/wallet-ledger-ent
 import { WalletLedgerOrmEntity } from '../entities/wallet-ledger.orm-entity.js';
 
 export class WalletLedgerMapper {
-  static toPersistence(
-    entry: WalletLedgerEntry,
-  ): WalletLedgerOrmEntity {
+  static toPersistence(entry: WalletLedgerEntry): WalletLedgerOrmEntity {
     const entity = new WalletLedgerOrmEntity();
 
     entity.id = entry.id;
@@ -22,9 +20,7 @@ export class WalletLedgerMapper {
     return entity;
   }
 
-  static toDomain(
-    entity: WalletLedgerOrmEntity,
-  ): WalletLedgerEntry {
+  static toDomain(entity: WalletLedgerOrmEntity): WalletLedgerEntry {
     const currency = entity.currency;
 
     return WalletLedgerEntry.rehydrate({

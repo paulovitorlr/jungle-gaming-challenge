@@ -39,19 +39,13 @@ export class Money {
   add(other: Money): Money {
     this.ensureSameCurrency(other);
 
-    return new Money(
-      this.amount.plus(other.amount),
-      this.currency,
-    );
+    return new Money(this.amount.plus(other.amount), this.currency);
   }
 
   subtract(other: Money): Money {
     this.ensureSameCurrency(other);
 
-    return new Money(
-      this.amount.minus(other.amount),
-      this.currency,
-    );
+    return new Money(this.amount.minus(other.amount), this.currency);
   }
 
   negate(): Money {
@@ -59,10 +53,7 @@ export class Money {
   }
 
   equals(other: Money): boolean {
-    return (
-      this.currency === other.currency &&
-      this.amount.equals(other.amount)
-    );
+    return this.currency === other.currency && this.amount.equals(other.amount);
   }
 
   isNegative(): boolean {
@@ -70,7 +61,7 @@ export class Money {
   }
 
   isPositive(): boolean {
-  return this.amount.greaterThan(0);
+    return this.amount.greaterThan(0);
   }
 
   isZero(): boolean {

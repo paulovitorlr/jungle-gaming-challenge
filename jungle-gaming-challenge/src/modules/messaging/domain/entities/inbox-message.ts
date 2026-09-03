@@ -22,23 +22,15 @@ export class InboxMessage {
     private _processedAt?: Date,
   ) {}
 
-  static receive(
-    props: ReceiveInboxMessageProps,
-  ): InboxMessage {
-    InboxMessage.assertRequired(
-      props.messageId,
-      'Message id is required',
-    );
+  static receive(props: ReceiveInboxMessageProps): InboxMessage {
+    InboxMessage.assertRequired(props.messageId, 'Message id is required');
 
     InboxMessage.assertRequired(
       props.consumerName,
       'Consumer name is required',
     );
 
-    InboxMessage.assertRequired(
-      props.payloadHash,
-      'Payload hash is required',
-    );
+    InboxMessage.assertRequired(props.payloadHash, 'Payload hash is required');
 
     return new InboxMessage(
       props.messageId,
@@ -48,9 +40,7 @@ export class InboxMessage {
     );
   }
 
-  static rehydrate(
-    state: InboxMessageState,
-  ): InboxMessage {
+  static rehydrate(state: InboxMessageState): InboxMessage {
     return new InboxMessage(
       state.messageId,
       state.consumerName,
@@ -74,24 +64,17 @@ export class InboxMessage {
 
   markProcessed(at: Date): void {
     if (this.isProcessed()) {
-      throw new Error(
-        'Inbox message is already processed',
-      );
+      throw new Error('Inbox message is already processed');
     }
 
     if (at < this.receivedAt) {
-      throw new Error(
-        'Processed date cannot be before received date',
-      );
+      throw new Error('Processed date cannot be before received date');
     }
 
     this._processedAt = at;
   }
 
-  private static assertRequired(
-    value: string,
-    message: string,
-  ): void {
+  private static assertRequired(value: string, message: string): void {
     if (!value || value.trim().length === 0) {
       throw new Error(message);
     }

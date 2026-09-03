@@ -39,24 +39,18 @@ import { ProcessWagerTransactionUseCase } from './use-cases/process-wager-transa
 
   providers: [
     {
-      provide:
-        ProcessWagerTransactionUseCase,
+      provide: ProcessWagerTransactionUseCase,
 
       useFactory: (
-        walletRepository:
-          WalletRepository,
+        walletRepository: WalletRepository,
 
-        walletLedgerRepository:
-          WalletLedgerRepository,
+        walletLedgerRepository: WalletLedgerRepository,
 
-        wagerTransactionRepository:
-          WagerTransactionRepository,
+        wagerTransactionRepository: WagerTransactionRepository,
 
-        unitOfWork:
-          UnitOfWork,
+        unitOfWork: UnitOfWork,
 
-        outboxRepository:
-          OutboxMessageRepository,
+        outboxRepository: OutboxMessageRepository,
       ) =>
         new ProcessWagerTransactionUseCase(
           walletRepository,
@@ -76,8 +70,6 @@ import { ProcessWagerTransactionUseCase } from './use-cases/process-wager-transa
     },
   ],
 
-  exports: [
-    ProcessWagerTransactionUseCase,
-  ],
+  exports: [ProcessWagerTransactionUseCase],
 })
 export class WageringApplicationModule {}

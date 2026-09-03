@@ -7,9 +7,7 @@ export type OutboxMessageState = {
   id: string;
   aggregateId: string;
   eventType: string;
-  payload: Readonly<
-    Record<string, unknown>
-  >;
+  payload: Readonly<Record<string, unknown>>;
   occurredAt: Date;
   attempts: number;
   nextAttemptAt?: Date;
@@ -21,18 +19,14 @@ export class OutboxMessage {
     public readonly id: string,
     public readonly aggregateId: string,
     public readonly eventType: string,
-    public readonly payload: Readonly<
-      Record<string, unknown>
-    >,
+    public readonly payload: Readonly<Record<string, unknown>>,
     public readonly occurredAt: Date,
     private _attempts: number,
     private _nextAttemptAt?: Date,
     private _publishedAt?: Date,
   ) {}
 
-  static enqueue<T extends object>(
-    event: IntegrationEvent<T>,
-  ): OutboxMessage {
+  static enqueue<T extends object>(event: IntegrationEvent<T>): OutboxMessage {
     return new OutboxMessage(
       event.eventId,
       event.aggregateId,
@@ -45,9 +39,7 @@ export class OutboxMessage {
     );
   }
 
-  static rehydrate(
-    state: OutboxMessageState,
-  ): OutboxMessage {
+  static rehydrate(state: OutboxMessageState): OutboxMessage {
     return new OutboxMessage(
       state.id,
       state.aggregateId,
@@ -81,24 +73,17 @@ export class OutboxMessage {
   isDue(now: Date): boolean {
     return (
       this.isPending() &&
-      (
-        this._nextAttemptAt === undefined ||
-        this._nextAttemptAt <= now
-      )
+      (this._nextAttemptAt === undefined || this._nextAttemptAt <= now)
     );
   }
 
   markPublished(at: Date): void {
     if (!this.isPending()) {
-      throw new Error(
-        'Outbox message is already published',
-      );
+      throw new Error('Outbox message is already published');
     }
 
     if (at < this.occurredAt) {
-      throw new Error(
-        'Published date cannot be before occurrence date',
-      );
+      throw new Error('Published date cannot be before occurrence date');
     }
 
     this._publishedAt = at;
@@ -107,24 +92,15 @@ export class OutboxMessage {
 
   scheduleRetry(now: Date): void {
     if (!this.isPending()) {
-      throw new Error(
-        'Published outbox message cannot be retried',
-      );
+      throw new Error('Published outbox message cannot be retried');
     }
 
     this._attempts += 1;
 
-    const exponentialDelay =
-      INITIAL_RETRY_DELAY_MS *
-      2 ** (this._attempts - 1);
+    const exponentialDelay = INITIAL_RETRY_DELAY_MS * 2 ** (this._attempts - 1);
 
-    const delay = Math.min(
-      exponentialDelay,
-      MAX_RETRY_DELAY_MS,
-    );
+    const delay = Math.min(exponentialDelay, MAX_RETRY_DELAY_MS);
 
-    this._nextAttemptAt = new Date(
-      now.getTime() + delay,
-    );
+    this._nextAttemptAt = new Date(now.getTime() + delay);
   }
 }

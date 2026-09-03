@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5432:5432"
+      - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -22,14 +22,14 @@ services:
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
     ports:
-      - "4566:4566"
+      - '4566:4566'
     volumes:
-      - "./docker/localstack/init-sqs.sh:/etc/localstack/init/ready.d/init-sqs.sh:ro"
+      - './docker/localstack/init-sqs.sh:/etc/localstack/init/ready.d/init-sqs.sh:ro'
     healthcheck:
       test:
         [
-          "CMD-SHELL",
-          "awslocal sqs get-queue-url --queue-name wager-transactions >/dev/null 2>&1",
+          'CMD-SHELL',
+          'awslocal sqs get-queue-url --queue-name wager-transactions >/dev/null 2>&1 && awslocal sqs get-queue-url --queue-name integration-events >/dev/null 2>&1',
         ]
       interval: 5s
       timeout: 5s

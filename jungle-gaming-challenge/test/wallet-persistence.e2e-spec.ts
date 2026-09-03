@@ -1,8 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  EntityManager,
-  MikroORM,
-} from '@mikro-orm/postgresql';
+import { EntityManager, MikroORM } from '@mikro-orm/postgresql';
 
 import { AppModule } from '../src/app.module.js';
 import { Wallet } from '../src/shared/domain/entities/wallet.entity.js';
@@ -32,23 +29,14 @@ describe('Wallet persistence', () => {
   let ledgerRepository: WalletLedgerRepository;
 
   async function cleanDatabase(): Promise<void> {
-  const em = orm.em.fork();
+    const em = orm.em.fork();
 
-  await em.nativeDelete(
-    WagerTransactionOrmEntity,
-    {},
-  );
+    await em.nativeDelete(WagerTransactionOrmEntity, {});
 
-  await em.nativeDelete(
-    WalletLedgerOrmEntity,
-    {},
-  );
+    await em.nativeDelete(WalletLedgerOrmEntity, {});
 
-  await em.nativeDelete(
-    WalletOrmEntity,
-    {},
-  );
-}
+    await em.nativeDelete(WalletOrmEntity, {});
+  }
 
   beforeAll(async () => {
     moduleRef = await Test.createTestingModule({
@@ -61,9 +49,7 @@ describe('Wallet persistence', () => {
     entityManager = moduleRef.get(EntityManager);
     unitOfWork = moduleRef.get(UNIT_OF_WORK);
     walletRepository = moduleRef.get(WALLET_REPOSITORY);
-    ledgerRepository = moduleRef.get(
-      WALLET_LEDGER_REPOSITORY,
-    );
+    ledgerRepository = moduleRef.get(WALLET_LEDGER_REPOSITORY);
   });
 
   beforeEach(async () => {
@@ -79,10 +65,7 @@ describe('Wallet persistence', () => {
   });
 
   it('should commit wallet and ledger together', async () => {
-    const wallet = Wallet.open(
-      'player-commit',
-      'BRL',
-    );
+    const wallet = Wallet.open('player-commit', 'BRL');
 
     const entry = wallet.credit(
       'transaction-commit',
@@ -99,38 +82,28 @@ describe('Wallet persistence', () => {
 
     const verificationEm = orm.em.fork();
 
-    const persistedWallet =
-      await verificationEm.findOne(
-        WalletOrmEntity,
-        {
-          id: wallet.id.toString(),
-        },
-      );
+    const persistedWallet = await verificationEm.findOne(WalletOrmEntity, {
+      id: wallet.id.toString(),
+    });
 
-    const persistedLedger =
-      await verificationEm.findOne(
-        WalletLedgerOrmEntity,
-        {
-          id: entry.id,
-        },
-      );
+    const persistedLedger = await verificationEm.findOne(
+      WalletLedgerOrmEntity,
+      {
+        id: entry.id,
+      },
+    );
 
     expect(persistedWallet).not.toBeNull();
     expect(persistedWallet?.balance).toBe('100.00');
     expect(persistedWallet?.version).toBe(2);
 
     expect(persistedLedger).not.toBeNull();
-    expect(persistedLedger?.walletId).toBe(
-      wallet.id.toString(),
-    );
+    expect(persistedLedger?.walletId).toBe(wallet.id.toString());
     expect(persistedLedger?.amount).toBe('100.00');
   });
 
   it('should roll back wallet and ledger together', async () => {
-    const wallet = Wallet.open(
-      'player-rollback',
-      'BRL',
-    );
+    const wallet = Wallet.open('player-rollback', 'BRL');
 
     const entry = wallet.credit(
       'transaction-rollback',
@@ -155,21 +128,16 @@ describe('Wallet persistence', () => {
 
     const verificationEm = orm.em.fork();
 
-    const persistedWallet =
-      await verificationEm.findOne(
-        WalletOrmEntity,
-        {
-          id: wallet.id.toString(),
-        },
-      );
+    const persistedWallet = await verificationEm.findOne(WalletOrmEntity, {
+      id: wallet.id.toString(),
+    });
 
-    const persistedLedger =
-      await verificationEm.findOne(
-        WalletLedgerOrmEntity,
-        {
-          id: entry.id,
-        },
-      );
+    const persistedLedger = await verificationEm.findOne(
+      WalletLedgerOrmEntity,
+      {
+        id: entry.id,
+      },
+    );
 
     expect(persistedWallet).toBeNull();
     expect(persistedLedger).toBeNull();

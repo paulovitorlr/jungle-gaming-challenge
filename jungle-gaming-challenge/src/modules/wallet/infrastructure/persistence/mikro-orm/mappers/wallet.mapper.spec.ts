@@ -26,10 +26,8 @@ describe('WalletMapper', () => {
     entity.currency = 'BRL';
     entity.balance = '150.00';
     entity.version = 3;
-    entity.createdAt =
-      new Date('2026-09-01T12:00:00.000Z');
-    entity.updatedAt =
-      new Date('2026-09-02T12:00:00.000Z');
+    entity.createdAt = new Date('2026-09-01T12:00:00.000Z');
+    entity.updatedAt = new Date('2026-09-02T12:00:00.000Z');
 
     const wallet = WalletMapper.toDomain(entity);
 

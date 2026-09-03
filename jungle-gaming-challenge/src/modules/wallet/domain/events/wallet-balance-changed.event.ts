@@ -23,17 +23,12 @@ export type WalletBalanceChangedData = {
   walletVersion: number;
 };
 
-export class WalletBalanceChanged
-  extends IntegrationEvent<WalletBalanceChangedData>
-{
-  readonly eventType =
-    'WalletBalanceChanged';
+export class WalletBalanceChanged extends IntegrationEvent<WalletBalanceChangedData> {
+  readonly eventType = 'WalletBalanceChanged';
 
   readonly version = 1;
 
-  private constructor(
-    props: IntegrationEventProps<WalletBalanceChangedData>,
-  ) {
+  private constructor(props: IntegrationEventProps<WalletBalanceChangedData>) {
     super(props);
   }
 
@@ -43,31 +38,23 @@ export class WalletBalanceChanged
     context: EventContext,
   ): WalletBalanceChanged {
     if (!wallet.id.equals(entry.walletId)) {
-      throw new Error(
-        'Ledger entry does not belong to the wallet',
-      );
+      throw new Error('Ledger entry does not belong to the wallet');
     }
 
     return new WalletBalanceChanged({
       eventId: randomUUID(),
       aggregateId: wallet.id.toString(),
-      correlationId:
-        context.correlationId,
+      correlationId: context.correlationId,
       causationId: context.causationId,
-      occurredAt:
-        context.occurredAt ??
-        entry.createdAt,
+      occurredAt: context.occurredAt ?? entry.createdAt,
 
       data: {
         walletId: wallet.id.toString(),
-        transactionId:
-          entry.transactionId,
+        transactionId: entry.transactionId,
         direction: entry.direction,
         money: entry.money.toJSON(),
-        balanceBefore:
-          entry.balanceBefore.toJSON(),
-        balanceAfter:
-          entry.balanceAfter.toJSON(),
+        balanceBefore: entry.balanceBefore.toJSON(),
+        balanceAfter: entry.balanceAfter.toJSON(),
         walletVersion: wallet.version,
       },
     });

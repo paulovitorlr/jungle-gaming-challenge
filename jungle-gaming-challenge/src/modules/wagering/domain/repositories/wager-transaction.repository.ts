@@ -2,9 +2,7 @@ import { WagerTransaction } from '../entities/wager-transaction.js';
 import { WagerTransactionId } from '../value-objects/wager-transaction-id.vo.js';
 
 export abstract class WagerTransactionRepository {
-  abstract findById(
-    id: WagerTransactionId,
-  ): Promise<WagerTransaction | null>;
+  abstract findById(id: WagerTransactionId): Promise<WagerTransaction | null>;
 
   abstract findByIdempotencyKey(
     providerId: string,
@@ -16,7 +14,5 @@ export abstract class WagerTransactionRepository {
     externalTransactionId: string,
   ): Promise<WagerTransaction | null>;
 
-  abstract save(
-    transaction: WagerTransaction,
-  ): Promise<void>;
+  abstract save(transaction: WagerTransaction): Promise<void>;
 }

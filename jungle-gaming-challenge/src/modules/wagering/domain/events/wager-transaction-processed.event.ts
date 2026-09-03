@@ -26,11 +26,8 @@ export type WagerTransactionProcessedData = {
   referenceTransactionId?: string;
 };
 
-export class WagerTransactionProcessed
-  extends IntegrationEvent<WagerTransactionProcessedData>
-{
-  readonly eventType =
-    'WagerTransactionProcessed';
+export class WagerTransactionProcessed extends IntegrationEvent<WagerTransactionProcessedData> {
+  readonly eventType = 'WagerTransactionProcessed';
 
   readonly version = 1;
 
@@ -44,50 +41,33 @@ export class WagerTransactionProcessed
     transaction: WagerTransaction,
     context: EventContext,
   ): WagerTransactionProcessed {
-    if (
-      transaction.status !==
-      WagerTransactionStatus.Processed
-    ) {
-      throw new Error(
-        'Only processed transactions can produce this event',
-      );
+    if (transaction.status !== WagerTransactionStatus.Processed) {
+      throw new Error('Only processed transactions can produce this event');
     }
 
     if (!transaction.resultingBalance) {
-      throw new Error(
-        'Processed transaction must have a resulting balance',
-      );
+      throw new Error('Processed transaction must have a resulting balance');
     }
 
     return new WagerTransactionProcessed({
       eventId: randomUUID(),
-      aggregateId:
-        transaction.id.toString(),
-      correlationId:
-        context.correlationId,
+      aggregateId: transaction.id.toString(),
+      correlationId: context.correlationId,
       causationId: context.causationId,
-      occurredAt:
-        context.occurredAt ??
-        transaction.processedAt ??
-        new Date(),
+      occurredAt: context.occurredAt ?? transaction.processedAt ?? new Date(),
 
       data: {
-        transactionId:
-          transaction.id.toString(),
+        transactionId: transaction.id.toString(),
         providerId: transaction.providerId,
-        externalTransactionId:
-          transaction.externalTransactionId,
-        walletId:
-          transaction.walletId.toString(),
+        externalTransactionId: transaction.externalTransactionId,
+        walletId: transaction.walletId.toString(),
         playerId: transaction.playerId,
         roundId: transaction.roundId,
         gameId: transaction.gameId,
         kind: transaction.kind,
         money: transaction.money.toJSON(),
-        resultingBalance:
-          transaction.resultingBalance.toJSON(),
-        referenceTransactionId:
-          transaction.referenceTransactionId,
+        resultingBalance: transaction.resultingBalance.toJSON(),
+        referenceTransactionId: transaction.referenceTransactionId,
       },
     });
   }

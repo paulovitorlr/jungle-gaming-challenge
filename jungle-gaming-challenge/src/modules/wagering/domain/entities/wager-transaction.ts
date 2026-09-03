@@ -9,7 +9,6 @@ import { InvalidTransactionStateError } from '../errors/invalid-transaction-stat
 import { LedgerDirection } from '../../../wallet/domain/enums/ledger-direction.enum.js';
 import { InvalidWagerReferenceError } from '../errors/invalid-wager-reference.error.js';
 
-
 export type CreateWagerTransactionProps = {
   providerId: string;
   externalTransactionId: string;
@@ -151,72 +150,70 @@ export class WagerTransaction {
   }
 
   assertValidReference(reference?: WagerTransaction): void {
-  if (!reference) {
-    throw new InvalidWagerReferenceError(
-      WagerFailureCode.ReferenceNotFound,
-      'Referenced transaction was not found',
-    );
+    if (!reference) {
+      throw new InvalidWagerReferenceError(
+        WagerFailureCode.ReferenceNotFound,
+        'Referenced transaction was not found',
+      );
+    }
+
+    const hasMatchingScope =
+      this.providerId === reference.providerId &&
+      this.referenceExternalTransactionId === reference.externalTransactionId &&
+      this.playerId === reference.playerId &&
+      this.walletId.equals(reference.walletId) &&
+      this.money.currency === reference.money.currency &&
+      this.roundId === reference.roundId;
+
+    if (!hasMatchingScope) {
+      throw new InvalidWagerReferenceError(
+        WagerFailureCode.ReferenceScopeMismatch,
+        'Referenced transaction does not belong to the same scope',
+      );
+    }
+
+    const allowedKinds = this.allowedReferenceKinds();
+
+    if (!allowedKinds.includes(reference.kind)) {
+      throw new InvalidWagerReferenceError(
+        WagerFailureCode.InvalidReferenceType,
+        `${this.kind} cannot reference ${reference.kind}`,
+      );
+    }
+
+    if (reference.status !== WagerTransactionStatus.Processed) {
+      throw new InvalidWagerReferenceError(
+        WagerFailureCode.ReferenceNotProcessed,
+        'Referenced transaction must be processed',
+      );
+    }
+
+    if (!this.money.equals(reference.money)) {
+      throw new InvalidWagerReferenceError(
+        WagerFailureCode.ReferenceAmountMismatch,
+        'Referenced transaction must have the same monetary amount',
+      );
+    }
   }
+  private allowedReferenceKinds(): WagerTransactionKind[] {
+    switch (this.kind) {
+      case WagerTransactionKind.Refund:
+        return [WagerTransactionKind.Bet];
 
-  const hasMatchingScope =
-    this.providerId === reference.providerId &&
-    this.referenceExternalTransactionId ===
-      reference.externalTransactionId &&
-    this.playerId === reference.playerId &&
-    this.walletId.equals(reference.walletId) &&
-    this.money.currency === reference.money.currency &&
-    this.roundId === reference.roundId;
+      case WagerTransactionKind.Rollback:
+        return [
+          WagerTransactionKind.Bet,
+          WagerTransactionKind.Win,
+          WagerTransactionKind.Refund,
+        ];
 
-  if (!hasMatchingScope) {
-    throw new InvalidWagerReferenceError(
-      WagerFailureCode.ReferenceScopeMismatch,
-      'Referenced transaction does not belong to the same scope',
-    );
+      case WagerTransactionKind.Win:
+        return [WagerTransactionKind.Bet];
+
+      default:
+        return [];
+    }
   }
-
-  const allowedKinds = this.allowedReferenceKinds();
-
-  if (!allowedKinds.includes(reference.kind)) {
-    throw new InvalidWagerReferenceError(
-      WagerFailureCode.InvalidReferenceType,
-      `${this.kind} cannot reference ${reference.kind}`,
-    );
-  }
-
-  if (reference.status !== WagerTransactionStatus.Processed) {
-    throw new InvalidWagerReferenceError(
-      WagerFailureCode.ReferenceNotProcessed,
-      'Referenced transaction must be processed',
-    );
-  }
-
-  if (!this.money.equals(reference.money)) {
-    throw new InvalidWagerReferenceError(
-      WagerFailureCode.ReferenceAmountMismatch,
-      'Referenced transaction must have the same monetary amount',
-    );
-  }
-
-}
-private allowedReferenceKinds(): WagerTransactionKind[] {
-  switch (this.kind) {
-    case WagerTransactionKind.Refund:
-      return [WagerTransactionKind.Bet];
-
-    case WagerTransactionKind.Rollback:
-      return [
-        WagerTransactionKind.Bet,
-        WagerTransactionKind.Win,
-        WagerTransactionKind.Refund,
-      ];
-
-    case WagerTransactionKind.Win:
-      return [WagerTransactionKind.Bet];
-
-    default:
-      return [];
-  }
-}
 
   get status(): WagerTransactionStatus {
     return this._status;
@@ -250,55 +247,51 @@ private allowedReferenceKinds(): WagerTransactionKind[] {
     return this.kind !== WagerTransactionKind.Loss;
   }
 
-  ledgerDirectionFor(
-        reference?: WagerTransaction,
-    ): LedgerDirection {
-        switch (this.kind) {
-            case WagerTransactionKind.Opening:
-            case WagerTransactionKind.Win:
-            case WagerTransactionKind.Refund:
-                return LedgerDirection.Credit;
+  ledgerDirectionFor(reference?: WagerTransaction): LedgerDirection {
+    switch (this.kind) {
+      case WagerTransactionKind.Opening:
+      case WagerTransactionKind.Win:
+      case WagerTransactionKind.Refund:
+        return LedgerDirection.Credit;
 
-            case WagerTransactionKind.Bet:
-                return LedgerDirection.Debit;
+      case WagerTransactionKind.Bet:
+        return LedgerDirection.Debit;
 
-            case WagerTransactionKind.Loss:
-                throw new InvalidWagerTransactionError(
-                    'LOSS does not produce a ledger entry',
-            );
-
-            case WagerTransactionKind.Rollback:
-                return this.rollbackDirectionFor(reference);
-        }
-    }
-
-    private rollbackDirectionFor(
-        reference?: WagerTransaction,
-    ): LedgerDirection {
-            if (!reference) {
-                throw new InvalidWagerTransactionError(
-                    'ROLLBACK requires the referenced transaction',
+      case WagerTransactionKind.Loss:
+        throw new InvalidWagerTransactionError(
+          'LOSS does not produce a ledger entry',
         );
+
+      case WagerTransactionKind.Rollback:
+        return this.rollbackDirectionFor(reference);
     }
-
-  const allowedReferenceKinds = [
-    WagerTransactionKind.Bet,
-    WagerTransactionKind.Win,
-    WagerTransactionKind.Refund,
-  ];
-
-  if (!allowedReferenceKinds.includes(reference.kind)) {
-    throw new InvalidWagerTransactionError(
-      `ROLLBACK cannot reference ${reference.kind}`,
-    );
   }
 
-  const referenceDirection = reference.ledgerDirectionFor();
+  private rollbackDirectionFor(reference?: WagerTransaction): LedgerDirection {
+    if (!reference) {
+      throw new InvalidWagerTransactionError(
+        'ROLLBACK requires the referenced transaction',
+      );
+    }
 
-  return referenceDirection === LedgerDirection.Debit
-    ? LedgerDirection.Credit
-    : LedgerDirection.Debit;
-}
+    const allowedReferenceKinds = [
+      WagerTransactionKind.Bet,
+      WagerTransactionKind.Win,
+      WagerTransactionKind.Refund,
+    ];
+
+    if (!allowedReferenceKinds.includes(reference.kind)) {
+      throw new InvalidWagerTransactionError(
+        `ROLLBACK cannot reference ${reference.kind}`,
+      );
+    }
+
+    const referenceDirection = reference.ledgerDirectionFor();
+
+    return referenceDirection === LedgerDirection.Debit
+      ? LedgerDirection.Credit
+      : LedgerDirection.Debit;
+  }
 
   requiresReference(): boolean {
     return (
@@ -312,63 +305,59 @@ private allowedReferenceKinds(): WagerTransactionKind[] {
   }
 
   markProcessed(
-  referenceTransactionId: string | undefined,
-  resultingBalance: Money,
-  at: Date,
-): void {
-  this.ensureNotTerminal();
+    referenceTransactionId: string | undefined,
+    resultingBalance: Money,
+    at: Date,
+  ): void {
+    this.ensureNotTerminal();
 
-  if (
-    this.requiresReference() &&
-    (!referenceTransactionId ||
-      referenceTransactionId.trim().length === 0)
-  ) {
-    throw new InvalidWagerTransactionError(
-      `${this.kind} requires a resolved transaction reference`,
-    );
+    if (
+      this.requiresReference() &&
+      (!referenceTransactionId || referenceTransactionId.trim().length === 0)
+    ) {
+      throw new InvalidWagerTransactionError(
+        `${this.kind} requires a resolved transaction reference`,
+      );
+    }
+
+    this._referenceTransactionId = referenceTransactionId;
+    this._resultingBalance = resultingBalance;
+    this._processedAt = at;
+    this._status = WagerTransactionStatus.Processed;
   }
 
-  this._referenceTransactionId = referenceTransactionId;
-  this._resultingBalance = resultingBalance;
-  this._processedAt = at;
-  this._status = WagerTransactionStatus.Processed;
-}
+  markPendingReference(): void {
+    this.ensureNotTerminal();
 
-markPendingReference(): void {
-  this.ensureNotTerminal();
+    if (!this.requiresReference()) {
+      throw new InvalidWagerTransactionError(
+        `${this.kind} does not require a transaction reference`,
+      );
+    }
 
-  if (!this.requiresReference()) {
-    throw new InvalidWagerTransactionError(
-      `${this.kind} does not require a transaction reference`,
-    );
+    this._status = WagerTransactionStatus.PendingReference;
   }
 
-  this._status = WagerTransactionStatus.PendingReference;
-}
+  reject(code: WagerFailureCode, resultingBalance: Money): void {
+    this.ensureNotTerminal();
 
-reject(
-  code: WagerFailureCode,
-  resultingBalance: Money,
-): void {
-  this.ensureNotTerminal();
-
-  this._failureCode = code;
-  this._resultingBalance = resultingBalance;
-  this._status = WagerTransactionStatus.Rejected;
-}
-
-fail(code: WagerFailureCode): void {
-  this.ensureNotTerminal();
-
-  this._failureCode = code;
-  this._status = WagerTransactionStatus.Failed;
-}
-
-private ensureNotTerminal(): void {
-  if (this.isTerminal()) {
-    throw new InvalidTransactionStateError(this._status);
+    this._failureCode = code;
+    this._resultingBalance = resultingBalance;
+    this._status = WagerTransactionStatus.Rejected;
   }
-}
+
+  fail(code: WagerFailureCode): void {
+    this.ensureNotTerminal();
+
+    this._failureCode = code;
+    this._status = WagerTransactionStatus.Failed;
+  }
+
+  private ensureNotTerminal(): void {
+    if (this.isTerminal()) {
+      throw new InvalidTransactionStateError(this._status);
+    }
+  }
 
   private static assertRequired(value: string, message: string): void {
     if (!value || value.trim().length === 0) {

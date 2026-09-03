@@ -1,9 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
-import {
-  EntityManager,
-  MikroORM,
-} from '@mikro-orm/postgresql';
+import { EntityManager, MikroORM } from '@mikro-orm/postgresql';
 
 import {
   DeleteMessageCommand,
@@ -45,66 +42,45 @@ describe('SQS wager DLQ', () => {
 
   let sqsClient: SqsClientService;
 
-  let inboxRepository:
-    InboxMessageRepository;
+  let inboxRepository: InboxMessageRepository;
 
-  let wagerTransactionRepository:
-    WagerTransactionRepository;
+  let wagerTransactionRepository: WagerTransactionRepository;
 
   let queueUrl: string;
   let dlqUrl: string;
 
   beforeAll(async () => {
-    moduleRef =
-      await Test.createTestingModule({
-        imports: [AppModule],
-      }).compile();
+    moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
 
     await moduleRef.init();
 
     orm = moduleRef.get(MikroORM);
     entityManager = orm.em.fork();
 
-    unitOfWork = moduleRef.get(
-      UNIT_OF_WORK,
+    unitOfWork = moduleRef.get(UNIT_OF_WORK);
+
+    sqsClient = moduleRef.get(SqsClientService);
+
+    inboxRepository = moduleRef.get(InboxMessageRepository);
+
+    wagerTransactionRepository = moduleRef.get(WagerTransactionRepository);
+
+    const queueResponse = await sqsClient.client.send(
+      new GetQueueUrlCommand({
+        QueueName: 'wager-transactions',
+      }),
     );
 
-    sqsClient = moduleRef.get(
-      SqsClientService,
+    const dlqResponse = await sqsClient.client.send(
+      new GetQueueUrlCommand({
+        QueueName: 'wager-transactions-dlq',
+      }),
     );
 
-    inboxRepository = moduleRef.get(
-      InboxMessageRepository,
-    );
-
-    wagerTransactionRepository =
-      moduleRef.get(
-        WagerTransactionRepository,
-      );
-
-    const queueResponse =
-      await sqsClient.client.send(
-        new GetQueueUrlCommand({
-          QueueName:
-            'wager-transactions',
-        }),
-      );
-
-    const dlqResponse =
-      await sqsClient.client.send(
-        new GetQueueUrlCommand({
-          QueueName:
-            'wager-transactions-dlq',
-        }),
-      );
-
-    if (
-      !queueResponse.QueueUrl ||
-      !dlqResponse.QueueUrl
-    ) {
-      throw new Error(
-        'SQS queue or DLQ was not found',
-      );
+    if (!queueResponse.QueueUrl || !dlqResponse.QueueUrl) {
+      throw new Error('SQS queue or DLQ was not found');
     }
 
     queueUrl = queueResponse.QueueUrl;
@@ -124,8 +100,7 @@ describe('SQS wager DLQ', () => {
 
         Attributes: {
           VisibilityTimeout: '1',
-          ReceiveMessageWaitTimeSeconds:
-            '1',
+          ReceiveMessageWaitTimeSeconds: '1',
         },
       }),
     );
@@ -144,25 +119,13 @@ describe('SQS wager DLQ', () => {
 
     entityManager = orm.em.fork();
 
-    await entityManager.nativeDelete(
-      InboxMessageOrmEntity,
-      {},
-    );
+    await entityManager.nativeDelete(InboxMessageOrmEntity, {});
 
-    await entityManager.nativeDelete(
-      WagerTransactionOrmEntity,
-      {},
-    );
+    await entityManager.nativeDelete(WagerTransactionOrmEntity, {});
 
-    await entityManager.nativeDelete(
-      WalletLedgerOrmEntity,
-      {},
-    );
+    await entityManager.nativeDelete(WalletLedgerOrmEntity, {});
 
-    await entityManager.nativeDelete(
-      WalletOrmEntity,
-      {},
-    );
+    await entityManager.nativeDelete(WalletOrmEntity, {});
   });
 
   afterAll(async () => {
@@ -177,8 +140,7 @@ describe('SQS wager DLQ', () => {
 
           Attributes: {
             VisibilityTimeout: '30',
-            ReceiveMessageWaitTimeSeconds:
-              '20',
+            ReceiveMessageWaitTimeSeconds: '20',
           },
         }),
       );
@@ -199,128 +161,91 @@ describe('SQS wager DLQ', () => {
     }
   });
 
-  it(
-    'should move a permanently failing message to the DLQ after retries',
-    async () => {
-      const message = {
-        messageId:
-          'message-dlq-123',
+  it('should move a permanently failing message to the DLQ after retries', async () => {
+    const message = {
+      messageId: 'message-dlq-123',
 
-        type:
-          'WagerTransactionRequested',
+      type: 'WagerTransactionRequested',
 
-        occurredAt:
-          new Date().toISOString(),
+      occurredAt: new Date().toISOString(),
 
-        data: {
-          providerId:
-            'provider-dlq',
+      data: {
+        providerId: 'provider-dlq',
 
-          externalTransactionId:
-            'external-dlq-123',
+        externalTransactionId: 'external-dlq-123',
 
-          idempotencyKey:
-            'provider-dlq:external-dlq-123',
+        idempotencyKey: 'provider-dlq:external-dlq-123',
 
-          playerId:
-            'missing-player',
+        playerId: 'missing-player',
 
-          /*
-           * A wallet não existe. Cada
-           * tentativa falha e a transação
-           * SQL é revertida.
-           */
-          walletId:
-            '00000000-0000-4000-8000-000000000099',
+        /*
+         * A wallet não existe. Cada
+         * tentativa falha e a transação
+         * SQL é revertida.
+         */
+        walletId: '00000000-0000-4000-8000-000000000099',
 
-          roundId:
-            'round-dlq-123',
+        roundId: 'round-dlq-123',
 
-          gameId:
-            'game-dlq-123',
+        gameId: 'game-dlq-123',
 
-          kind: 'BET',
+        kind: 'BET',
 
-          money: {
-            amount: '25.00',
-            currency: 'BRL',
-          },
+        money: {
+          amount: '25.00',
+          currency: 'BRL',
         },
+      },
+    };
+
+    const messageBody = JSON.stringify(message);
+
+    await sqsClient.client.send(
+      new SendMessageCommand({
+        QueueUrl: queueUrl,
+        MessageBody: messageBody,
+      }),
+    );
+
+    const dlqMessage = await waitForDlqMessage(sqsClient, dlqUrl);
+
+    expect(dlqMessage.Body).toBe(messageBody);
+
+    expect(
+      Number(dlqMessage.Attributes?.ApproximateReceiveCount),
+    ).toBeGreaterThanOrEqual(1);
+
+    const persistenceState = await unitOfWork.execute(async () => {
+      const inbox = await inboxRepository.findByIdentity(
+        'wager-transaction-consumer',
+        message.messageId,
+      );
+
+      const wager = await wagerTransactionRepository.findByIdempotencyKey(
+        message.data.providerId,
+        message.data.idempotencyKey,
+      );
+
+      return {
+        inbox,
+        wager,
       };
+    });
 
-      const messageBody =
-        JSON.stringify(message);
+    expect(persistenceState.inbox).toBeNull();
 
+    expect(persistenceState.wager).toBeNull();
+
+    if (dlqMessage.ReceiptHandle) {
       await sqsClient.client.send(
-        new SendMessageCommand({
-          QueueUrl: queueUrl,
-          MessageBody: messageBody,
+        new DeleteMessageCommand({
+          QueueUrl: dlqUrl,
+
+          ReceiptHandle: dlqMessage.ReceiptHandle,
         }),
       );
-
-      const dlqMessage =
-        await waitForDlqMessage(
-          sqsClient,
-          dlqUrl,
-        );
-
-      expect(dlqMessage.Body).toBe(
-        messageBody,
-      );
-
-      expect(
-        Number(
-          dlqMessage.Attributes
-            ?.ApproximateReceiveCount,
-        ),
-      ).toBeGreaterThanOrEqual(1);
-
-      const persistenceState =
-        await unitOfWork.execute(
-          async () => {
-            const inbox =
-              await inboxRepository
-                .findByIdentity(
-                  'wager-transaction-consumer',
-                  message.messageId,
-                );
-
-            const wager =
-              await wagerTransactionRepository
-                .findByIdempotencyKey(
-                  message.data.providerId,
-                  message.data
-                    .idempotencyKey,
-                );
-
-            return {
-              inbox,
-              wager,
-            };
-          },
-        );
-
-      expect(
-        persistenceState.inbox,
-      ).toBeNull();
-
-      expect(
-        persistenceState.wager,
-      ).toBeNull();
-
-      if (dlqMessage.ReceiptHandle) {
-        await sqsClient.client.send(
-          new DeleteMessageCommand({
-            QueueUrl: dlqUrl,
-
-            ReceiptHandle:
-              dlqMessage.ReceiptHandle,
-          }),
-        );
-      }
-    },
-    75_000,
-  );
+    }
+  }, 75_000);
 });
 
 async function waitForDlqMessage(
@@ -328,34 +253,27 @@ async function waitForDlqMessage(
   dlqUrl: string,
   timeoutMs = 60_000,
 ): Promise<Message> {
-  const deadline =
-    Date.now() + timeoutMs;
+  const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
-    const response =
-      await sqsClient.client.send(
-        new ReceiveMessageCommand({
-          QueueUrl: dlqUrl,
+    const response = await sqsClient.client.send(
+      new ReceiveMessageCommand({
+        QueueUrl: dlqUrl,
 
-          MaxNumberOfMessages: 1,
+        MaxNumberOfMessages: 1,
 
-          WaitTimeSeconds: 1,
+        WaitTimeSeconds: 1,
 
-          MessageSystemAttributeNames: [
-            'ApproximateReceiveCount',
-          ],
-        }),
-      );
+        MessageSystemAttributeNames: ['ApproximateReceiveCount'],
+      }),
+    );
 
-    const message =
-      response.Messages?.[0];
+    const message = response.Messages?.[0];
 
     if (message) {
       return message;
     }
   }
 
-  throw new Error(
-    `Message did not reach the DLQ within ${timeoutMs}ms`,
-  );
+  throw new Error(`Message did not reach the DLQ within ${timeoutMs}ms`);
 }

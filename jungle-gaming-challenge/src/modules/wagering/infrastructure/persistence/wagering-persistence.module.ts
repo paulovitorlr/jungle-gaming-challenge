@@ -8,24 +8,16 @@ import { WagerTransactionOrmEntity } from './mikro-orm/entities/wager-transactio
 import { MikroOrmWagerTransactionRepository } from './mikro-orm/repositories/mikro-orm-wager-transaction.repository.js';
 
 @Module({
-  imports: [
-    MikroOrmModule.forFeature([
-      WagerTransactionOrmEntity,
-    ]),
-  ],
+  imports: [MikroOrmModule.forFeature([WagerTransactionOrmEntity])],
 
   providers: [
     {
-      provide:
-        WagerTransactionRepository,
+      provide: WagerTransactionRepository,
 
-      useClass:
-        MikroOrmWagerTransactionRepository,
+      useClass: MikroOrmWagerTransactionRepository,
     },
   ],
 
-  exports: [
-    WagerTransactionRepository,
-  ],
+  exports: [WagerTransactionRepository],
 })
 export class WageringPersistenceModule {}

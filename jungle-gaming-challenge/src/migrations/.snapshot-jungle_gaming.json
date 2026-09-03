@@ -184,6 +184,40 @@
           "enumItems": [],
           "mappedType": "string"
         },
+        "lock_id": {
+          "name": "lock_id",
+          "type": "varchar(100)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 100,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "locked_until": {
+          "name": "locked_until",
+          "type": "timestamptz(6)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "datetime"
+        },
         "next_attempt_at": {
           "name": "next_attempt_at",
           "type": "timestamptz(6)",
@@ -257,8 +291,10 @@
         {
           "columnNames": [
             "published_at",
+            "locked_until",
             "next_attempt_at",
-            "occurred_at"
+            "occurred_at",
+            "id"
           ],
           "composite": true,
           "constraint": false,

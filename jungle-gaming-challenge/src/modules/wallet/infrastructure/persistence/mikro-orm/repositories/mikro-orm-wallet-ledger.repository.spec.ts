@@ -5,9 +5,7 @@ import { WalletId } from '../../../../../../shared/domain/value-objects/wallet-i
 import { WalletLedgerEntry } from '../../../../domain/entities/wallet-ledger-entry.js';
 import { LedgerDirection } from '../../../../domain/enums/ledger-direction.enum.js';
 import { WalletLedgerOrmEntity } from '../entities/wallet-ledger.orm-entity.js';
-import {
-  MikroOrmWalletLedgerRepository,
-} from './mikro-orm-wallet-ledger.repository.js';
+import { MikroOrmWalletLedgerRepository } from './mikro-orm-wallet-ledger.repository.js';
 
 describe('MikroOrmWalletLedgerRepository', () => {
   it('should register ledger entry without flushing', async () => {
@@ -16,10 +14,9 @@ describe('MikroOrmWalletLedgerRepository', () => {
       flush: vi.fn(),
     };
 
-    const repository =
-      new MikroOrmWalletLedgerRepository(
-        entityManager as unknown as EntityManager,
-      );
+    const repository = new MikroOrmWalletLedgerRepository(
+      entityManager as unknown as EntityManager,
+    );
 
     const entry = WalletLedgerEntry.create({
       id: 'ledger-entry-1',
@@ -38,20 +35,16 @@ describe('MikroOrmWalletLedgerRepository', () => {
         amount: '100.00',
         currency: 'BRL',
       }),
-      createdAt:
-        new Date('2026-09-02T12:00:00.000Z'),
+      createdAt: new Date('2026-09-02T12:00:00.000Z'),
     });
 
     await repository.add(entry);
 
     expect(entityManager.persist).toHaveBeenCalledOnce();
 
-    const persisted =
-      entityManager.persist.mock.calls[0][0];
+    const persisted = entityManager.persist.mock.calls[0][0];
 
-    expect(persisted).toBeInstanceOf(
-      WalletLedgerOrmEntity,
-    );
+    expect(persisted).toBeInstanceOf(WalletLedgerOrmEntity);
     expect(persisted.id).toBe('ledger-entry-1');
     expect(persisted.walletId).toBe('wallet-123');
     expect(persisted.amount).toBe('100.00');

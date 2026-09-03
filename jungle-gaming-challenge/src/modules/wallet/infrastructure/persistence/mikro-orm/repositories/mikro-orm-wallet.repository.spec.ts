@@ -4,9 +4,7 @@ import { Wallet } from '../../../../../../shared/domain/entities/wallet.entity.j
 import { Money } from '../../../../../../shared/domain/value-objects/money.vo.js';
 import { WalletId } from '../../../../../../shared/domain/value-objects/wallet-id.vo.js';
 import { WalletOrmEntity } from '../entities/wallet.orm-entity.js';
-import {
-  MikroOrmWalletRepository,
-} from './mikro-orm-wallet.repository.js';
+import { MikroOrmWalletRepository } from './mikro-orm-wallet.repository.js';
 
 function createEntityManagerMock() {
   return {
@@ -27,10 +25,8 @@ describe('MikroOrmWalletRepository', () => {
     entity.currency = 'BRL';
     entity.balance = '100.00';
     entity.version = 2;
-    entity.createdAt =
-      new Date('2026-09-01T12:00:00.000Z');
-    entity.updatedAt =
-      new Date('2026-09-02T12:00:00.000Z');
+    entity.createdAt = new Date('2026-09-01T12:00:00.000Z');
+    entity.updatedAt = new Date('2026-09-02T12:00:00.000Z');
 
     entityManager.findOne.mockResolvedValue(entity);
 
@@ -38,16 +34,11 @@ describe('MikroOrmWalletRepository', () => {
       entityManager as unknown as EntityManager,
     );
 
-    const wallet = await repository.findById(
-      WalletId.from('wallet-123'),
-    );
+    const wallet = await repository.findById(WalletId.from('wallet-123'));
 
-    expect(entityManager.findOne).toHaveBeenCalledWith(
-      WalletOrmEntity,
-      {
-        id: 'wallet-123',
-      },
-    );
+    expect(entityManager.findOne).toHaveBeenCalledWith(WalletOrmEntity, {
+      id: 'wallet-123',
+    });
 
     expect(wallet).not.toBeNull();
     expect(wallet?.id.toString()).toBe('wallet-123');
@@ -64,9 +55,7 @@ describe('MikroOrmWalletRepository', () => {
       entityManager as unknown as EntityManager,
     );
 
-    const wallet = await repository.findById(
-      WalletId.from('wallet-123'),
-    );
+    const wallet = await repository.findById(WalletId.from('wallet-123'));
 
     expect(wallet).toBeNull();
   });
@@ -83,8 +72,7 @@ describe('MikroOrmWalletRepository', () => {
 
     expect(entityManager.persist).toHaveBeenCalledOnce();
 
-    const persisted =
-      entityManager.persist.mock.calls[0][0];
+    const persisted = entityManager.persist.mock.calls[0][0];
 
     expect(persisted).toBeInstanceOf(WalletOrmEntity);
     expect(persisted.balance).toBe('0.00');
